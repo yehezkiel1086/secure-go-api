@@ -30,6 +30,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      # Web UI dashboard
+      - "8025:8025"
 
 volumes:
   postgres_data:

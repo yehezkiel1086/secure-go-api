@@ -14,6 +14,7 @@ type (
 		DB       *DB
 		Rabbitmq *Rabbitmq
 		JWT      *JWT
+		SMTP     *SMTP
 	}
 
 	App struct {
@@ -47,6 +48,14 @@ type (
 		RefreshTokenSecret   string
 		AccessTokenDuration  string
 		RefreshTokenDuration string
+	}
+
+	SMTP struct {
+		Host     string
+		Port     string
+		User     string
+		Password string
+		From     string
 	}
 )
 
@@ -91,11 +100,20 @@ func New() (*Container, error) {
 		RefreshTokenDuration: os.Getenv("REFRESH_TOKEN_DURATION"),
 	}
 
+	SMTP := &SMTP{
+		Host:     os.Getenv("SMTP_HOST"),
+		Port:     os.Getenv("SMTP_PORT"),
+		User:     os.Getenv("SMTP_USER"),
+		Password: os.Getenv("SMTP_PASSWORD"),
+		From:     os.Getenv("SMTP_FROM"),
+	}
+
 	return &Container{
 		App:      App,
 		HTTP:     HTTP,
 		DB:       DB,
 		Rabbitmq: Rabbitmq,
 		JWT:      JWT,
+		SMTP:     SMTP,
 	}, nil
 }

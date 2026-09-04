@@ -69,7 +69,8 @@ func main() {
 	handleError("failed to create rabbitmq publisher", err)
 	defer emailPublisher.Close()
 
-	emailConsumer := rabbitmq.NewConsumer(rabbitClient, rabbitmq.NewLogEmailSender())
+	emailSender := rabbitmq.NewSMTPEmailSender(conf.SMTP)
+	emailConsumer := rabbitmq.NewConsumer(rabbitClient, emailSender)
 
 	// start rabbitmq consumer worker in background
 	workerCtx, cancelWorker := context.WithCancel(context.Background())
