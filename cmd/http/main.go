@@ -1,0 +1,51 @@
+package main
+
+import (
+	"context"
+	"log/slog"
+	"os"
+	"time"
+
+	"github.com/yehezkiel1086/secure-go-api/internal/adapter/config"
+	"github.com/yehezkiel1086/secure-go-api/internal/adapter/handler"
+	"github.com/yehezkiel1086/secure-go-api/internal/adapter/storage/postgres"
+	"github.com/yehezkiel1086/secure-go-api/internal/adapter/storage/postgres/repository"
+	"github.com/yehezkiel1086/secure-go-api/internal/core/service"
+)
+
+func handleError(msg string, err error) {
+	if err != nil {
+		slog.Error(msg, "error", err)
+		os.Exit(1)
+	}
+}
+
+func main() {
+	// load .env configs
+	conf, err := config.New()
+	handleError("failed to load .env configs", err)
+	slog.Info(".env configs loaded successfully", "app", conf.App.Name, "env", conf.App.Env)
+
+	// init db
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	pool, err := postgres.NewPool(ctx, conf.DB)
+	handleError("failed to connect to postgres", err)
+	defer pool.Close()
+	slog.Info("connected to postgres database successfully")
+
+	// dependency injection
+	userRepo := repository.NewUserRepositoryWithDB(pool)
+	userService := service.NewUserService(userRepo)
+	userHandler := handler.NewUserHandler(userService)
+
+	// init router
+	router := handler.NewRouter(conf, userHandler)
+
+	// start server
+	slog.Info("starting server", "host", conf.HTTP.Host, "port", conf.HTTP.Port)
+	if err := router.Run(); err != nil {
+		handleError("failed to run server", err)
+	}
+}
