@@ -33,6 +33,11 @@ func handleError(msg string, err error) {
 
 // @host      localhost:8080
 // @BasePath  /api/v1
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
 func main() {
 	// load .env configs
 	conf, err := config.New()
@@ -50,11 +55,16 @@ func main() {
 
 	// dependency injection
 	userRepo := repository.NewUserRepositoryWithDB(pool)
+	authRepo := repository.NewAuthRepositoryWithDB(pool)
+
 	userService := service.NewUserService(userRepo)
+	authService := service.NewAuthService(authRepo, userRepo, conf.JWT)
+
 	userHandler := handler.NewUserHandler(userService)
+	authHandler := handler.NewAuthHandler(authService, conf.JWT, conf.App)
 
 	// init router
-	router := handler.NewRouter(conf, userHandler)
+	router := handler.NewRouter(conf, userHandler, authHandler)
 
 	// start server
 	slog.Info("starting server", "host", conf.HTTP.Host, "port", conf.HTTP.Port)

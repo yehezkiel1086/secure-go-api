@@ -9,6 +9,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 	_ "github.com/yehezkiel1086/secure-go-api/docs"
 	"github.com/yehezkiel1086/secure-go-api/internal/adapter/config"
+	"github.com/yehezkiel1086/secure-go-api/internal/core/domain"
 )
 
 type Router struct {
@@ -20,6 +21,7 @@ type Router struct {
 func NewRouter(
 	conf *config.Container,
 	userHandler *UserHandler,
+	authHandler *AuthHandler,
 ) *Router {
 	if conf.App.Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -45,19 +47,29 @@ func NewRouter(
 		})
 	})
 
+	auth := AuthMiddleware(conf.JWT)
+
 	// API v1 route group
 	v1 := r.Group("/api/v1")
 	{
-		// Public routes
+		// public routes (no authentication required)
 		v1.POST("/register", userHandler.RegisterUser)
 		v1.GET("/confirm-email", userHandler.ConfirmEmail)
+		v1.POST("/login", authHandler.Login)
+		v1.POST("/refresh", authHandler.RefreshToken)
 
-		// User routes
-		users := v1.Group("/users")
+		// authenticated routes (requires valid token + user or admin role)
+		authenticated := v1.Group("/", auth, RoleMiddleware(domain.RoleUser, domain.RoleAdmin))
 		{
-			users.GET("", userHandler.GetUsers)
-			users.GET("/:id", userHandler.GetUserByID)
-			users.PATCH("/:id", userHandler.UpdateUserName)
+			authenticated.POST("/logout", authHandler.Logout)
+		}
+
+		// admin-only routes (requires valid token + admin role)
+		adminOnly := v1.Group("/", auth, RoleMiddleware(domain.RoleAdmin))
+		{
+			adminOnly.GET("/users", userHandler.GetUsers)
+			adminOnly.GET("/users/:id", userHandler.GetUserByID)
+			adminOnly.PATCH("/users/:id", userHandler.UpdateUserName)
 		}
 	}
 

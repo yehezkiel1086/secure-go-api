@@ -1,5 +1,22 @@
 basePath: /api/v1
 definitions:
+  github_com_yehezkiel1086_secure-go-api_internal_core_domain.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  github_com_yehezkiel1086_secure-go-api_internal_core_domain.LoginResponse:
+    properties:
+      tokens:
+        $ref: '#/definitions/github_com_yehezkiel1086_secure-go-api_internal_core_domain.TokenPair'
+      user:
+        $ref: '#/definitions/github_com_yehezkiel1086_secure-go-api_internal_core_domain.UserResponse'
+    type: object
   github_com_yehezkiel1086_secure-go-api_internal_core_domain.PaginatedUsersResponse:
     properties:
       page:
@@ -14,6 +31,11 @@ definitions:
         items:
           $ref: '#/definitions/github_com_yehezkiel1086_secure-go-api_internal_core_domain.UserResponse'
         type: array
+    type: object
+  github_com_yehezkiel1086_secure-go-api_internal_core_domain.RefreshTokenRequest:
+    properties:
+      refresh_token:
+        type: string
     type: object
   github_com_yehezkiel1086_secure-go-api_internal_core_domain.RegisterUserRequest:
     properties:
@@ -31,6 +53,17 @@ definitions:
     - email
     - name
     - password
+    type: object
+  github_com_yehezkiel1086_secure-go-api_internal_core_domain.TokenPair:
+    properties:
+      access_token:
+        type: string
+      access_token_expires_at:
+        type: string
+      refresh_token:
+        type: string
+      refresh_token_expires_at:
+        type: string
     type: object
   github_com_yehezkiel1086_secure-go-api_internal_core_domain.UpdateUserNameRequest:
     properties:
@@ -106,6 +139,104 @@ paths:
       summary: Confirm user email
       tags:
       - users
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticates user credentials, sets hardened HttpOnly cookies,
+        and returns JWT token pair
+      parameters:
+      - description: User credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_yehezkiel1086_secure-go-api_internal_core_domain.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_yehezkiel1086_secure-go-api_internal_core_domain.LoginResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Invalid credentials
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: User login
+      tags:
+      - auth
+  /logout:
+    post:
+      description: Revokes user refresh tokens and clears authentication cookies
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Logged out successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: User logout
+      tags:
+      - auth
+  /refresh:
+    post:
+      consumes:
+      - application/json
+      description: Rotates access and refresh tokens, detecting token reuse and setting
+        new HttpOnly cookies
+      parameters:
+      - description: Optional refresh token body if cookies are not used
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/github_com_yehezkiel1086_secure-go-api_internal_core_domain.RefreshTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_yehezkiel1086_secure-go-api_internal_core_domain.TokenPair'
+        "400":
+          description: Missing refresh token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Invalid, expired, or reused token
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Refresh token
+      tags:
+      - auth
   /register:
     post:
       consumes:
@@ -256,4 +387,10 @@ paths:
       summary: Update user name
       tags:
       - users
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

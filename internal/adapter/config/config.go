@@ -11,6 +11,7 @@ type (
 		App  *App
 		HTTP *HTTP
 		DB   *DB
+		JWT  *JWT
 	}
 
 	App struct {
@@ -30,6 +31,13 @@ type (
 		Name     string
 		User     string
 		Password string
+	}
+
+	JWT struct {
+		AccessTokenSecret    string
+		RefreshTokenSecret   string
+		AccessTokenDuration  string
+		RefreshTokenDuration string
 	}
 )
 
@@ -57,9 +65,17 @@ func New() (*Container, error) {
 		Password: os.Getenv("DB_PASSWORD"),
 	}
 
+	JWT := &JWT{
+		AccessTokenSecret:    os.Getenv("ACCESS_TOKEN_SECRET"),
+		RefreshTokenSecret:   os.Getenv("REFRESH_TOKEN_SECRET"),
+		AccessTokenDuration:  os.Getenv("ACCESS_TOKEN_DURATION"),
+		RefreshTokenDuration: os.Getenv("REFRESH_TOKEN_DURATION"),
+	}
+
 	return &Container{
 		App:  App,
 		HTTP: HTTP,
 		DB:   DB,
+		JWT:  JWT,
 	}, nil
 }

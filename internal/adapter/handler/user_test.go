@@ -14,6 +14,7 @@ import (
 	"github.com/yehezkiel1086/secure-go-api/internal/adapter/handler"
 	"github.com/yehezkiel1086/secure-go-api/internal/core/domain"
 	"github.com/yehezkiel1086/secure-go-api/internal/core/port"
+	"github.com/yehezkiel1086/secure-go-api/internal/core/util"
 )
 
 type mockUserService struct {
@@ -61,13 +62,22 @@ func (m *mockUserService) VerifyEmail(ctx context.Context, token string) error {
 	return nil
 }
 
+var testJWTConfig = &config.JWT{
+	AccessTokenSecret:    "testaccesssecret12345678901234567890",
+	RefreshTokenSecret:   "testrefreshsecret12345678901234567890",
+	AccessTokenDuration:  "15",
+	RefreshTokenDuration: "7",
+}
+
 func setupTestRouter(svc port.UserService) *handler.Router {
 	gin.SetMode(gin.TestMode)
 	conf := &config.Container{
 		App: &config.App{Name: "test-app", Env: "test"},
+		JWT: testJWTConfig,
 	}
-	h := handler.NewUserHandler(svc)
-	return handler.NewRouter(conf, h)
+	userH := handler.NewUserHandler(svc)
+	authH := handler.NewAuthHandler(nil, conf.JWT, conf.App)
+	return handler.NewRouter(conf, userH, authH)
 }
 
 func TestHandler_HealthCheck(t *testing.T) {
@@ -183,8 +193,18 @@ func TestHandler_ConfirmEmail(t *testing.T) {
 func TestHandler_GetUserByID_InvalidUUID(t *testing.T) {
 	router := setupTestRouter(&mockUserService{})
 
+	adminToken, err := util.GenerateToken(testJWTConfig, util.TokenAccess, &domain.User{
+		Name:  "Admin",
+		Email: "admin@example.com",
+		Role:  domain.RoleAdmin,
+	})
+	if err != nil {
+		t.Fatalf("failed to generate admin token: %v", err)
+	}
+
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest(http.MethodGet, "/api/v1/users/not-a-uuid", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
