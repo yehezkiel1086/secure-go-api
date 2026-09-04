@@ -62,4 +62,8 @@ type UserService interface {
 
 	// VerifyEmail confirms a user's email using a raw verification token.
 	VerifyEmail(ctx context.Context, token string) error
+
+	// ResendVerificationEmail generates a new verification token and enqueues an email.
+	ResendVerificationEmail(ctx context.Context, email string) error
 }
+

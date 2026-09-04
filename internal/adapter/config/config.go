@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -8,10 +9,11 @@ import (
 
 type (
 	Container struct {
-		App  *App
-		HTTP *HTTP
-		DB   *DB
-		JWT  *JWT
+		App      *App
+		HTTP     *HTTP
+		DB       *DB
+		Rabbitmq *Rabbitmq
+		JWT      *JWT
 	}
 
 	App struct {
@@ -33,6 +35,13 @@ type (
 		Password string
 	}
 
+	Rabbitmq struct {
+		Host     string
+		Port     string
+		User     string
+		Password string
+	}
+
 	JWT struct {
 		AccessTokenSecret    string
 		RefreshTokenSecret   string
@@ -40,6 +49,11 @@ type (
 		RefreshTokenDuration string
 	}
 )
+
+// AMQPURL formats the RabbitMQ connection URI.
+func (r *Rabbitmq) AMQPURL() string {
+	return fmt.Sprintf("amqp://%s:%s@%s:%s/", r.User, r.Password, r.Host, r.Port)
+}
 
 func New() (*Container, error) {
 	_ = godotenv.Load()
@@ -63,6 +77,13 @@ func New() (*Container, error) {
 		Password: os.Getenv("DB_PASSWORD"),
 	}
 
+	Rabbitmq := &Rabbitmq{
+		Host:     os.Getenv("RABBITMQ_HOST"),
+		Port:     os.Getenv("RABBITMQ_PORT"),
+		User:     os.Getenv("RABBITMQ_USER"),
+		Password: os.Getenv("RABBITMQ_PASSWORD"),
+	}
+
 	JWT := &JWT{
 		AccessTokenSecret:    os.Getenv("ACCESS_TOKEN_SECRET"),
 		RefreshTokenSecret:   os.Getenv("REFRESH_TOKEN_SECRET"),
@@ -71,9 +92,10 @@ func New() (*Container, error) {
 	}
 
 	return &Container{
-		App:  App,
-		HTTP: HTTP,
-		DB:   DB,
-		JWT:  JWT,
+		App:      App,
+		HTTP:     HTTP,
+		DB:       DB,
+		Rabbitmq: Rabbitmq,
+		JWT:      JWT,
 	}, nil
 }

@@ -44,6 +44,10 @@ func (h *UserHandler) RegisterUser(c *gin.Context) {
 
 	res, err := h.userService.RegisterUser(c.Request.Context(), &req)
 	if err != nil {
+		if errors.Is(err, domain.ErrInvalidEmailFormat) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid email address format"})
+			return
+		}
 		if errors.Is(err, domain.ErrEmailAlreadyExists) {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
@@ -87,6 +91,37 @@ func (h *UserHandler) ConfirmEmail(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "email verified successfully"})
+}
+
+// ResendVerification sends a new email verification token.
+// @Summary      Resend email verification
+// @Description  Dispatches a fresh verification token to the user's email if an unverified account exists. Always returns 200 to prevent user enumeration.
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Param        request body domain.ResendVerificationRequest true "User email address"
+// @Success      200  {object}  map[string]string "Verification instructions dispatched"
+// @Failure      400  {object}  map[string]string "Invalid request body or email format"
+// @Failure      500  {object}  map[string]string "Internal Server Error"
+// @Router       /resend-verification [post]
+func (h *UserHandler) ResendVerification(c *gin.Context) {
+	var req domain.ResendVerificationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	err := h.userService.ResendVerificationEmail(c.Request.Context(), req.Email)
+	if err != nil {
+		if errors.Is(err, domain.ErrInvalidEmailFormat) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid email address format"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process verification request"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "if an unverified account exists with this email, a verification link has been dispatched"})
 }
 
 // GetUsers retrieves a paginated list of users.

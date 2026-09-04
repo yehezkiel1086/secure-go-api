@@ -2,10 +2,9 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"strings"
 	"time"
@@ -16,25 +15,37 @@ import (
 	"github.com/yehezkiel1086/secure-go-api/internal/core/util"
 )
 
+const (
+	// EmailVerificationTokenDuration defines how long an email verification token remains valid.
+	EmailVerificationTokenDuration = 15 * time.Minute
+)
+
 var _ port.UserService = (*UserService)(nil)
 
 // UserService coordinates user domain operations.
 type UserService struct {
-	userRepo port.UserRepository
+	userRepo       port.UserRepository
+	emailPublisher port.EmailPublisher
 }
 
-// NewUserService creates a new UserService with the injected UserRepository port.
-func NewUserService(userRepo port.UserRepository) *UserService {
+// NewUserService creates a new UserService with the injected UserRepository and EmailPublisher ports.
+func NewUserService(userRepo port.UserRepository, emailPublisher port.EmailPublisher) *UserService {
 	return &UserService{
-		userRepo: userRepo,
+		userRepo:       userRepo,
+		emailPublisher: emailPublisher,
 	}
 }
 
-// RegisterUser registers a new user with bcrypt-hashed password and default User role.
+// RegisterUser registers a new user, hashes password, saves record, and dispatches a verification token to RabbitMQ.
 func (s *UserService) RegisterUser(ctx context.Context, req *domain.RegisterUserRequest) (*domain.UserResponse, error) {
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 
-	// Check if user already exists
+	// 1. Strict RFC email format and domain validation
+	if err := util.ValidateEmail(email); err != nil {
+		return nil, domain.ErrInvalidEmailFormat
+	}
+
+	// 2. Check if user already exists
 	existing, err := s.userRepo.GetUserByEmail(ctx, email)
 	if err == nil && existing != nil {
 		return nil, domain.ErrEmailAlreadyExists
@@ -42,7 +53,7 @@ func (s *UserService) RegisterUser(ctx context.Context, req *domain.RegisterUser
 		return nil, fmt.Errorf("checking existing email: %w", err)
 	}
 
-	// Hash password using core bcrypt utility
+	// 3. Hash password using bcrypt
 	hashedPassword, err := util.HashPassword(req.Password)
 	if err != nil {
 		return nil, fmt.Errorf("hashing password: %w", err)
@@ -58,6 +69,41 @@ func (s *UserService) RegisterUser(ctx context.Context, req *domain.RegisterUser
 	created, err := s.userRepo.CreateUser(ctx, user)
 	if err != nil {
 		return nil, fmt.Errorf("creating user: %w", err)
+	}
+
+	// 4. Generate cryptographically secure one-time verification token (32 bytes = 256-bit entropy)
+	rawToken, err := util.GenerateSecureToken(32)
+	if err != nil {
+		return nil, fmt.Errorf("generating verification token: %w", err)
+	}
+
+	tokenHash := util.HashToken(rawToken)
+	expiresAt := time.Now().Add(EmailVerificationTokenDuration)
+
+	// 5. Persist SHA-256 hash and expiration in DB (raw token is never persisted)
+	err = s.userRepo.SetEmailVerifyToken(
+		ctx,
+		created.ID,
+		pgtype.Text{String: tokenHash, Valid: true},
+		pgtype.Timestamptz{Time: expiresAt, Valid: true},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("saving email verification token: %w", err)
+	}
+
+	// 6. Asynchronously dispatch verification email via RabbitMQ
+	if s.emailPublisher != nil {
+		emailPayload := &domain.EmailPayload{
+			To:        created.Email,
+			Subject:   "Please verify your email address",
+			Body:      fmt.Sprintf("Hello %s,\n\nPlease verify your email address by clicking the link below:\nhttp://localhost:8080/api/v1/confirm-email?token=%s\n\nThis verification link expires in 15 minutes.\n", created.Name, rawToken),
+			Token:     rawToken,
+			ExpiresAt: expiresAt,
+		}
+
+		if err := s.emailPublisher.PublishVerificationEmail(ctx, emailPayload); err != nil {
+			slog.Error("failed to enqueue verification email to rabbitmq", "error", err, "email", created.Email)
+		}
 	}
 
 	return created.ToResponse(), nil
@@ -133,20 +179,82 @@ func (s *UserService) VerifyEmail(ctx context.Context, token string) error {
 		return domain.ErrInvalidToken
 	}
 
-	hash := sha256.Sum256([]byte(token))
-	tokenHash := hex.EncodeToString(hash[:])
+	tokenHash := util.HashToken(token)
 
 	user, err := s.userRepo.GetUserByEmailVerifyToken(ctx, pgtype.Text{String: tokenHash, Valid: true})
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return domain.ErrInvalidToken
+		}
 		return err
 	}
 
+	// Verify expiration
 	if user.EmailVerifyTokenExpiresAt.Valid && time.Now().After(user.EmailVerifyTokenExpiresAt.Time) {
 		return domain.ErrTokenExpired
 	}
 
+	// Mark verified and atomically clear token columns
 	if err := s.userRepo.MarkEmailVerified(ctx, user.ID); err != nil {
 		return fmt.Errorf("marking email verified: %w", err)
+	}
+
+	return nil
+}
+
+// ResendVerificationEmail generates a fresh verification token and dispatches an email via RabbitMQ.
+// It is enumeration-safe: returns nil even if the email does not exist or is already verified.
+func (s *UserService) ResendVerificationEmail(ctx context.Context, email string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if err := util.ValidateEmail(email); err != nil {
+		return domain.ErrInvalidEmailFormat
+	}
+
+	user, err := s.userRepo.GetUserByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			// Enumeration safety: return nil silently
+			return nil
+		}
+		return fmt.Errorf("retrieving user: %w", err)
+	}
+
+	// If account is already verified, do nothing
+	if user.IsEmailVerified {
+		return nil
+	}
+
+	// Generate fresh token and new 15-minute expiration
+	rawToken, err := util.GenerateSecureToken(32)
+	if err != nil {
+		return fmt.Errorf("generating verification token: %w", err)
+	}
+
+	tokenHash := util.HashToken(rawToken)
+	expiresAt := time.Now().Add(EmailVerificationTokenDuration)
+
+	err = s.userRepo.SetEmailVerifyToken(
+		ctx,
+		user.ID,
+		pgtype.Text{String: tokenHash, Valid: true},
+		pgtype.Timestamptz{Time: expiresAt, Valid: true},
+	)
+	if err != nil {
+		return fmt.Errorf("updating email verification token: %w", err)
+	}
+
+	if s.emailPublisher != nil {
+		emailPayload := &domain.EmailPayload{
+			To:        user.Email,
+			Subject:   "Please verify your email address",
+			Body:      fmt.Sprintf("Hello %s,\n\nPlease verify your email address by clicking the link below:\nhttp://localhost:8080/api/v1/confirm-email?token=%s\n\nThis verification link expires in 15 minutes.\n", user.Name, rawToken),
+			Token:     rawToken,
+			ExpiresAt: expiresAt,
+		}
+
+		if err := s.emailPublisher.PublishVerificationEmail(ctx, emailPayload); err != nil {
+			slog.Error("failed to enqueue verification email to rabbitmq", "error", err, "email", user.Email)
+		}
 	}
 
 	return nil

@@ -54,6 +54,13 @@ definitions:
     - name
     - password
     type: object
+  github_com_yehezkiel1086_secure-go-api_internal_core_domain.ResendVerificationRequest:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
   github_com_yehezkiel1086_secure-go-api_internal_core_domain.TokenPair:
     properties:
       access_token:
@@ -171,6 +178,12 @@ paths:
             additionalProperties:
               type: string
             type: object
+        "403":
+          description: Email not verified
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal Server Error
           schema:
@@ -276,6 +289,43 @@ paths:
               type: string
             type: object
       summary: Register a new user
+      tags:
+      - users
+  /resend-verification:
+    post:
+      consumes:
+      - application/json
+      description: Dispatches a fresh verification token to the user's email if an
+        unverified account exists. Always returns 200 to prevent user enumeration.
+      parameters:
+      - description: User email address
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_yehezkiel1086_secure-go-api_internal_core_domain.ResendVerificationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Verification instructions dispatched
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request body or email format
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Resend email verification
       tags:
       - users
   /users:

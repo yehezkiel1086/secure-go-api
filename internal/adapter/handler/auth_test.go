@@ -146,6 +146,32 @@ func TestAuthHandler_Login_InvalidCredentials(t *testing.T) {
 	}
 }
 
+func TestAuthHandler_Login_EmailNotVerified(t *testing.T) {
+	authSvc := &mockAuthService{
+		loginFn: func(ctx context.Context, req *domain.LoginRequest) (*domain.LoginResponse, error) {
+			return nil, domain.ErrEmailNotVerified
+		},
+	}
+
+	router := setupAuthTestRouter(authSvc, &mockUserService{})
+
+	payload := domain.LoginRequest{
+		Email:    "bob@example.com",
+		Password: "correctpassword",
+	}
+	body, _ := json.Marshal(payload)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden, got %d", w.Code)
+	}
+}
+
+
 func TestAuthHandler_RefreshToken_ReuseDetection(t *testing.T) {
 	authSvc := &mockAuthService{
 		refreshTokenFn: func(ctx context.Context, rawRefreshToken string) (*domain.TokenPair, error) {

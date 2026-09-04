@@ -63,6 +63,7 @@ func (h *AuthHandler) clearTokenCookies(c *gin.Context) {
 // @Success      200  {object}  domain.LoginResponse
 // @Failure      400  {object}  map[string]string "Invalid request body"
 // @Failure      401  {object}  map[string]string "Invalid credentials"
+// @Failure      403  {object}  map[string]string "Email not verified"
 // @Failure      500  {object}  map[string]string "Internal Server Error"
 // @Router       /login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
@@ -78,8 +79,12 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid email or password"})
 			return
 		}
+		if errors.Is(err, domain.ErrEmailNotVerified) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "email address is not verified. Please verify your email before logging in."})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "login failed"})
-		return
+			return
 	}
 
 	h.setTokenCookies(c, res.Tokens)

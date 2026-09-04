@@ -8,6 +8,7 @@ import (
 
 	"github.com/yehezkiel1086/secure-go-api/internal/adapter/config"
 	"github.com/yehezkiel1086/secure-go-api/internal/adapter/handler"
+	"github.com/yehezkiel1086/secure-go-api/internal/adapter/rabbitmq"
 	"github.com/yehezkiel1086/secure-go-api/internal/adapter/storage/postgres"
 	"github.com/yehezkiel1086/secure-go-api/internal/adapter/storage/postgres/repository"
 	"github.com/yehezkiel1086/secure-go-api/internal/core/service"
@@ -57,11 +58,34 @@ func main() {
 	err = postgres.Migrate(ctx, pool)
 	handleError("failed to run database migrations", err)
 
+	// init rabbitmq
+	rabbitClient, err := rabbitmq.NewClient(conf.Rabbitmq)
+	handleError("failed to connect to rabbitmq", err)
+	defer rabbitClient.Close()
+	slog.Info("connected to rabbitmq successfully")
+
+	// initialize email publisher and consumer
+	emailPublisher, err := rabbitmq.NewPublisher(rabbitClient)
+	handleError("failed to create rabbitmq publisher", err)
+	defer emailPublisher.Close()
+
+	emailConsumer := rabbitmq.NewConsumer(rabbitClient, rabbitmq.NewLogEmailSender())
+
+	// start rabbitmq consumer worker in background
+	workerCtx, cancelWorker := context.WithCancel(context.Background())
+	defer cancelWorker()
+
+	go func() {
+		if err := emailConsumer.Start(workerCtx); err != nil {
+			slog.Error("rabbitmq consumer stopped with error", "error", err)
+		}
+	}()
+
 	// dependency injection
 	userRepo := repository.NewUserRepositoryWithDB(pool)
 	authRepo := repository.NewAuthRepositoryWithDB(pool)
 
-	userService := service.NewUserService(userRepo)
+	userService := service.NewUserService(userRepo, emailPublisher)
 	authService := service.NewAuthService(authRepo, userRepo, conf.JWT)
 
 	userHandler := handler.NewUserHandler(userService)

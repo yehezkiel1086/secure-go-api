@@ -18,11 +18,12 @@ import (
 )
 
 type mockUserService struct {
-	registerUserFn   func(ctx context.Context, req *domain.RegisterUserRequest) (*domain.UserResponse, error)
-	getUserByIDFn    func(ctx context.Context, id pgtype.UUID) (*domain.UserResponse, error)
-	getUsersFn       func(ctx context.Context, page, pageSize int32) (*domain.PaginatedUsersResponse, error)
-	updateUserNameFn func(ctx context.Context, id pgtype.UUID, req *domain.UpdateUserNameRequest) (*domain.UserResponse, error)
-	verifyEmailFn    func(ctx context.Context, token string) error
+	registerUserFn          func(ctx context.Context, req *domain.RegisterUserRequest) (*domain.UserResponse, error)
+	getUserByIDFn           func(ctx context.Context, id pgtype.UUID) (*domain.UserResponse, error)
+	getUsersFn              func(ctx context.Context, page, pageSize int32) (*domain.PaginatedUsersResponse, error)
+	updateUserNameFn        func(ctx context.Context, id pgtype.UUID, req *domain.UpdateUserNameRequest) (*domain.UserResponse, error)
+	verifyEmailFn           func(ctx context.Context, token string) error
+	resendVerificationEmailFn func(ctx context.Context, email string) error
 }
 
 var _ port.UserService = (*mockUserService)(nil)
@@ -58,6 +59,13 @@ func (m *mockUserService) UpdateUserName(ctx context.Context, id pgtype.UUID, re
 func (m *mockUserService) VerifyEmail(ctx context.Context, token string) error {
 	if m.verifyEmailFn != nil {
 		return m.verifyEmailFn(ctx, token)
+	}
+	return nil
+}
+
+func (m *mockUserService) ResendVerificationEmail(ctx context.Context, email string) error {
+	if m.resendVerificationEmailFn != nil {
+		return m.resendVerificationEmailFn(ctx, email)
 	}
 	return nil
 }
@@ -211,3 +219,27 @@ func TestHandler_GetUserByID_InvalidUUID(t *testing.T) {
 		t.Fatalf("expected 400 Bad Request, got %d", w.Code)
 	}
 }
+
+func TestHandler_ResendVerification(t *testing.T) {
+	svc := &mockUserService{
+		resendVerificationEmailFn: func(ctx context.Context, email string) error {
+			return nil
+		},
+	}
+	router := setupTestRouter(svc)
+
+	payload := domain.ResendVerificationRequest{
+		Email: "bob@example.com",
+	}
+	body, _ := json.Marshal(payload)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/resend-verification", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+

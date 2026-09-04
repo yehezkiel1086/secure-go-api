@@ -86,11 +86,12 @@ func TestAuthService_Login_Success(t *testing.T) {
 	userRepo := &mockUserRepo{
 		getUserByEmailFn: func(ctx context.Context, email string) (*domain.User, error) {
 			return &domain.User{
-				ID:           userID,
-				Name:         "John Doe",
-				Email:        email,
-				PasswordHash: passwordHash,
-				Role:         domain.RoleUser,
+				ID:              userID,
+				Name:            "John Doe",
+				Email:           email,
+				PasswordHash:    passwordHash,
+				Role:            domain.RoleUser,
+				IsEmailVerified: true,
 			}, nil
 		},
 	}
@@ -127,6 +128,35 @@ func TestAuthService_Login_Success(t *testing.T) {
 	}
 }
 
+func TestAuthService_Login_UnverifiedEmail(t *testing.T) {
+	passwordHash, _ := util.HashPassword("secretpassword")
+	userID := pgtype.UUID{Bytes: [16]byte{1}, Valid: true}
+
+	userRepo := &mockUserRepo{
+		getUserByEmailFn: func(ctx context.Context, email string) (*domain.User, error) {
+			return &domain.User{
+				ID:              userID,
+				Name:            "Unverified User",
+				Email:           email,
+				PasswordHash:    passwordHash,
+				Role:            domain.RoleUser,
+				IsEmailVerified: false, // Unverified
+			}, nil
+		},
+	}
+	authRepo := &mockAuthRepo{}
+
+	authService := service.NewAuthService(authRepo, userRepo, testAuthJWTConfig)
+	_, err := authService.Login(context.Background(), &domain.LoginRequest{
+		Email:    "unverified@example.com",
+		Password: "secretpassword",
+	})
+
+	if !errors.Is(err, domain.ErrEmailNotVerified) {
+		t.Fatalf("expected ErrEmailNotVerified, got %v", err)
+	}
+}
+
 func TestAuthService_Login_InvalidPassword(t *testing.T) {
 	passwordHash, _ := util.HashPassword("secretpassword")
 
@@ -153,10 +183,11 @@ func TestAuthService_Login_InvalidPassword(t *testing.T) {
 func TestAuthService_RefreshToken_NormalRotation(t *testing.T) {
 	userID := pgtype.UUID{Bytes: [16]byte{2}, Valid: true}
 	user := &domain.User{
-		ID:    userID,
-		Name:  "Jane Doe",
-		Email: "jane@example.com",
-		Role:  domain.RoleUser,
+		ID:              userID,
+		Name:            "Jane Doe",
+		Email:           "jane@example.com",
+		Role:            domain.RoleUser,
+		IsEmailVerified: true,
 	}
 
 	userRepo := &mockUserRepo{

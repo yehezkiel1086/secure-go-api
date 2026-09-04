@@ -48,6 +48,11 @@ func (s *AuthService) Login(ctx context.Context, req *domain.LoginRequest) (*dom
 		return nil, domain.ErrInvalidCredentials
 	}
 
+	// Security: Do not allow unverified accounts to authenticate or issue tokens
+	if !user.IsEmailVerified {
+		return nil, domain.ErrEmailNotVerified
+	}
+
 	tokens, err := util.GenerateTokenPair(s.jwtCfg, user)
 	if err != nil {
 		return nil, fmt.Errorf("generating tokens: %w", err)
@@ -114,6 +119,10 @@ func (s *AuthService) RefreshToken(ctx context.Context, rawRefreshToken string) 
 	user, err := s.userRepo.GetUserByID(ctx, tokenRecord.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("looking up user: %w", err)
+	}
+
+	if !user.IsEmailVerified {
+		return nil, domain.ErrEmailNotVerified
 	}
 
 	newTokens, err := util.GenerateTokenPair(s.jwtCfg, user)

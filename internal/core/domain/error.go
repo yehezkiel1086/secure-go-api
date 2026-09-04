@@ -26,4 +26,13 @@ var (
 
 	// ErrInternal indicates an unexpected internal system or operational error.
 	ErrInternal = errors.New("internal server error")
+
+	// ErrEmailNotVerified indicates an account is not verified and cannot authenticate or perform actions.
+	ErrEmailNotVerified = errors.New("email address is not verified")
+
+	// ErrInvalidEmailFormat indicates the email does not conform to RFC syntax or valid domain structure.
+	ErrInvalidEmailFormat = errors.New("invalid email address format")
+
+	// ErrEmailAlreadyVerified indicates attempting to verify an already verified email.
+	ErrEmailAlreadyVerified = errors.New("email is already verified")
 )

@@ -55,6 +55,7 @@ func NewRouter(
 		// public routes (no authentication required)
 		v1.POST("/register", userHandler.RegisterUser)
 		v1.GET("/confirm-email", userHandler.ConfirmEmail)
+		v1.POST("/resend-verification", userHandler.ResendVerification)
 		v1.POST("/login", authHandler.Login)
 		v1.POST("/refresh", authHandler.RefreshToken)
 

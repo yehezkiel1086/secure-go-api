@@ -15,19 +15,32 @@ import (
 	"github.com/yehezkiel1086/secure-go-api/internal/core/util"
 )
 
+type mockEmailPublisher struct {
+	publishVerificationEmailFn func(ctx context.Context, payload *domain.EmailPayload) error
+}
+
+var _ port.EmailPublisher = (*mockEmailPublisher)(nil)
+
+func (m *mockEmailPublisher) PublishVerificationEmail(ctx context.Context, payload *domain.EmailPayload) error {
+	if m.publishVerificationEmailFn != nil {
+		return m.publishVerificationEmailFn(ctx, payload)
+	}
+	return nil
+}
+
 type mockUserRepo struct {
-	createUserFn                func(ctx context.Context, user *domain.User) (*domain.User, error)
-	getUserByIDFn               func(ctx context.Context, id pgtype.UUID) (*domain.User, error)
-	getUserByEmailFn             func(ctx context.Context, email string) (*domain.User, error)
-	getUserByEmailVerifyTokenFn func(ctx context.Context, tokenHash pgtype.Text) (*domain.User, error)
+	createUserFn                  func(ctx context.Context, user *domain.User) (*domain.User, error)
+	getUserByIDFn                 func(ctx context.Context, id pgtype.UUID) (*domain.User, error)
+	getUserByEmailFn               func(ctx context.Context, email string) (*domain.User, error)
+	getUserByEmailVerifyTokenFn   func(ctx context.Context, tokenHash pgtype.Text) (*domain.User, error)
 	getUserByPasswordResetTokenFn func(ctx context.Context, tokenHash pgtype.Text) (*domain.User, error)
-	listUsersFn                 func(ctx context.Context, limit, offset int32) ([]*domain.User, error)
-	countUsersFn                func(ctx context.Context) (int64, error)
-	updateUserNameFn            func(ctx context.Context, id pgtype.UUID, name string) (*domain.User, error)
-	updateUserPasswordFn        func(ctx context.Context, id pgtype.UUID, passwordHash string) error
-	setEmailVerifyTokenFn       func(ctx context.Context, id pgtype.UUID, tokenHash pgtype.Text, expiresAt pgtype.Timestamptz) error
-	markEmailVerifiedFn         func(ctx context.Context, id pgtype.UUID) error
-	setPasswordResetTokenFn     func(ctx context.Context, email string, tokenHash pgtype.Text, expiresAt pgtype.Timestamptz) error
+	listUsersFn                   func(ctx context.Context, limit, offset int32) ([]*domain.User, error)
+	countUsersFn                  func(ctx context.Context) (int64, error)
+	updateUserNameFn              func(ctx context.Context, id pgtype.UUID, name string) (*domain.User, error)
+	updateUserPasswordFn          func(ctx context.Context, id pgtype.UUID, passwordHash string) error
+	setEmailVerifyTokenFn         func(ctx context.Context, id pgtype.UUID, tokenHash pgtype.Text, expiresAt pgtype.Timestamptz) error
+	markEmailVerifiedFn           func(ctx context.Context, id pgtype.UUID) error
+	setPasswordResetTokenFn       func(ctx context.Context, email string, tokenHash pgtype.Text, expiresAt pgtype.Timestamptz) error
 }
 
 var _ port.UserRepository = (*mockUserRepo)(nil)
@@ -117,12 +130,14 @@ func (m *mockUserRepo) SetPasswordResetToken(ctx context.Context, email string, 
 }
 
 func TestUserService_RegisterUser_Success(t *testing.T) {
+	tokenSaved := false
+	publishedEvent := false
+
 	repo := &mockUserRepo{
 		getUserByEmailFn: func(ctx context.Context, email string) (*domain.User, error) {
 			return nil, domain.ErrNotFound
 		},
 		createUserFn: func(ctx context.Context, user *domain.User) (*domain.User, error) {
-			// Verify password was hashed and plain text was not saved
 			if user.PasswordHash == "password123" {
 				t.Fatal("password should be hashed")
 			}
@@ -132,9 +147,32 @@ func TestUserService_RegisterUser_Success(t *testing.T) {
 			user.ID = pgtype.UUID{Bytes: [16]byte{1}, Valid: true}
 			return user, nil
 		},
+		setEmailVerifyTokenFn: func(ctx context.Context, id pgtype.UUID, tokenHash pgtype.Text, expiresAt pgtype.Timestamptz) error {
+			tokenSaved = true
+			if !tokenHash.Valid || len(tokenHash.String) != 64 {
+				t.Fatalf("expected 64-character SHA-256 token hash, got %v", tokenHash.String)
+			}
+			if !expiresAt.Valid || expiresAt.Time.Before(time.Now()) {
+				t.Fatal("expected future expiration timestamp for verification token")
+			}
+			return nil
+		},
 	}
 
-	svc := service.NewUserService(repo)
+	publisher := &mockEmailPublisher{
+		publishVerificationEmailFn: func(ctx context.Context, payload *domain.EmailPayload) error {
+			publishedEvent = true
+			if payload.To != "alice@example.com" {
+				t.Errorf("expected recipient alice@example.com, got %s", payload.To)
+			}
+			if payload.Token == "" {
+				t.Error("expected non-empty raw token in payload")
+			}
+			return nil
+		},
+	}
+
+	svc := service.NewUserService(repo, publisher)
 	res, err := svc.RegisterUser(context.Background(), &domain.RegisterUserRequest{
 		Name:     "Alice",
 		Email:    "Alice@Example.com",
@@ -153,6 +191,38 @@ func TestUserService_RegisterUser_Success(t *testing.T) {
 	if res.Role != domain.RoleUser {
 		t.Errorf("expected role 2001, got %d", res.Role)
 	}
+	if !tokenSaved {
+		t.Fatal("expected email verification token to be persisted in database")
+	}
+	if !publishedEvent {
+		t.Fatal("expected verification email event to be published to message broker")
+	}
+}
+
+func TestUserService_RegisterUser_InvalidEmail(t *testing.T) {
+	repo := &mockUserRepo{}
+	publisher := &mockEmailPublisher{}
+	svc := service.NewUserService(repo, publisher)
+
+	invalidEmails := []string{
+		"plainaddress",
+		"@missinglocal.com",
+		"missingdomain@",
+		"two@@ats.com",
+		"bad..domain@example.com",
+		"invalid-tld@domain.c",
+	}
+
+	for _, em := range invalidEmails {
+		_, err := svc.RegisterUser(context.Background(), &domain.RegisterUserRequest{
+			Name:     "Invalid Email User",
+			Email:    em,
+			Password: "password123",
+		})
+		if !errors.Is(err, domain.ErrInvalidEmailFormat) {
+			t.Errorf("expected ErrInvalidEmailFormat for %q, got %v", em, err)
+		}
+	}
 }
 
 func TestUserService_RegisterUser_EmailConflict(t *testing.T) {
@@ -162,7 +232,7 @@ func TestUserService_RegisterUser_EmailConflict(t *testing.T) {
 		},
 	}
 
-	svc := service.NewUserService(repo)
+	svc := service.NewUserService(repo, nil)
 	_, err := svc.RegisterUser(context.Background(), &domain.RegisterUserRequest{
 		Name:     "Alice",
 		Email:    "alice@example.com",
@@ -187,7 +257,7 @@ func TestUserService_GetUsers(t *testing.T) {
 		},
 	}
 
-	svc := service.NewUserService(repo)
+	svc := service.NewUserService(repo, nil)
 	res, err := svc.GetUsers(context.Background(), 2, 10)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -233,7 +303,7 @@ func TestUserService_VerifyEmail(t *testing.T) {
 		},
 	}
 
-	svc := service.NewUserService(repo)
+	svc := service.NewUserService(repo, nil)
 	err := svc.VerifyEmail(context.Background(), rawToken)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -256,9 +326,49 @@ func TestUserService_VerifyEmail_Expired(t *testing.T) {
 		},
 	}
 
-	svc := service.NewUserService(repo)
+	svc := service.NewUserService(repo, nil)
 	err := svc.VerifyEmail(context.Background(), "sometoken")
 	if !errors.Is(err, domain.ErrTokenExpired) {
 		t.Fatalf("expected ErrTokenExpired, got %v", err)
+	}
+}
+
+func TestUserService_ResendVerificationEmail(t *testing.T) {
+	tokenUpdated := false
+	publishedEvent := false
+
+	repo := &mockUserRepo{
+		getUserByEmailFn: func(ctx context.Context, email string) (*domain.User, error) {
+			return &domain.User{
+				ID:              pgtype.UUID{Bytes: [16]byte{7}, Valid: true},
+				Name:            "Resend User",
+				Email:           email,
+				IsEmailVerified: false,
+			}, nil
+		},
+		setEmailVerifyTokenFn: func(ctx context.Context, id pgtype.UUID, tokenHash pgtype.Text, expiresAt pgtype.Timestamptz) error {
+			tokenUpdated = true
+			return nil
+		},
+	}
+
+	publisher := &mockEmailPublisher{
+		publishVerificationEmailFn: func(ctx context.Context, payload *domain.EmailPayload) error {
+			publishedEvent = true
+			return nil
+		},
+	}
+
+	svc := service.NewUserService(repo, publisher)
+	err := svc.ResendVerificationEmail(context.Background(), "resend@example.com")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if !tokenUpdated {
+		t.Fatal("expected new verification token to be saved")
+	}
+	if !publishedEvent {
+		t.Fatal("expected verification email to be published")
 	}
 }
