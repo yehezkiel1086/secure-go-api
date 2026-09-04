@@ -53,6 +53,10 @@ func main() {
 	defer pool.Close()
 	slog.Info("connected to postgres database successfully")
 
+	// auto db migrations
+	err = postgres.Migrate(ctx, pool)
+	handleError("failed to run database migrations", err)
+
 	// dependency injection
 	userRepo := repository.NewUserRepositoryWithDB(pool)
 	authRepo := repository.NewAuthRepositoryWithDB(pool)

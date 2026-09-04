@@ -18,6 +18,10 @@ tasks:
     desc: "access postgres db cli"
     cmd: docker exec -it postgres psql -U {{ .DB_USER }} -b {{ .DB_NAME }}
 
+  db:migrate:
+    desc: "run database migrations"
+    cmd: go run cmd/migrate/main.go
+
   dev:
     desc: "run backend api in dev mode"
     cmd: air

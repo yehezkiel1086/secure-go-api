@@ -42,9 +42,7 @@ type (
 )
 
 func New() (*Container, error) {
-	if err := godotenv.Load(); err != nil {
-		return nil, err
-	}
+	_ = godotenv.Load()
 
 	App := &App{
 		Name: os.Getenv("APP_NAME"),
