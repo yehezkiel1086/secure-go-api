@@ -1,0 +1,23 @@
+# https://taskfile.dev
+
+version: '3'
+
+dotenv:
+  - .env
+
+tasks:
+  compose:up:
+    desc: "run all docker compose services"
+    cmd: docker compose up -d
+  
+  compose:down:
+    desc: "stop all running docker compose services"
+    cmd: docker compose down
+
+  db:cli:
+    desc: "access postgres db cli"
+    cmd: docker exec -it postgres psql -U {{ .DB_USER }} -b {{ .DB_NAME }}
+
+  dev:
+    desc: "run backend api in dev mode"
+    cmd: air
