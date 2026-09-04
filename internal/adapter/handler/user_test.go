@@ -82,6 +82,32 @@ func TestHandler_HealthCheck(t *testing.T) {
 	}
 }
 
+func TestHandler_SwaggerUI(t *testing.T) {
+	router := setupTestRouter(&mockUserService{})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/swagger/index.html", nil)
+	req.RequestURI = "/swagger/index.html"
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for swagger UI, got %d", w.Code)
+	}
+}
+
+func TestHandler_SwaggerDocJSON(t *testing.T) {
+	router := setupTestRouter(&mockUserService{})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/swagger/doc.json", nil)
+	req.RequestURI = "/swagger/doc.json"
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for swagger doc.json, got %d", w.Code)
+	}
+}
+
 func TestHandler_RegisterUser_Success(t *testing.T) {
 	svc := &mockUserService{
 		registerUserFn: func(ctx context.Context, req *domain.RegisterUserRequest) (*domain.UserResponse, error) {

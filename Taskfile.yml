@@ -21,3 +21,7 @@ tasks:
   dev:
     desc: "run backend api in dev mode"
     cmd: air
+
+  swagger:gen:
+    desc: "generate swagger api documentation"
+    cmd: swag init -g cmd/http/main.go -o docs --parseDependency --parseInternal

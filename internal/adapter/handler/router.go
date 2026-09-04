@@ -5,6 +5,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
+	_ "github.com/yehezkiel1086/secure-go-api/docs"
 	"github.com/yehezkiel1086/secure-go-api/internal/adapter/config"
 )
 
@@ -24,7 +27,16 @@ func NewRouter(
 
 	r := gin.Default()
 
+	// Swagger UI documentation endpoint
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
 	// Global Healthcheck
+	// @Summary      Health check
+	// @Description  Returns system health status and configuration details
+	// @Tags         health
+	// @Produce      json
+	// @Success      200  {object}  map[string]string
+	// @Router       /health [get]
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status": "ok",

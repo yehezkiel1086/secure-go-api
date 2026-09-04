@@ -20,6 +20,19 @@ func handleError(msg string, err error) {
 	}
 }
 
+// @title           Secure Go API
+// @version         1.0
+// @description     A production-focused REST API written in Go, structured with Hexagonal Architecture (Ports and Adapters).
+// @termsOfService  http://swagger.io/terms/
+
+// @contact.name   API Support
+// @contact.email  support@example.com
+
+// @license.name  MIT
+// @license.url   https://opensource.org/licenses/MIT
+
+// @host      localhost:8080
+// @BasePath  /api/v1
 func main() {
 	// load .env configs
 	conf, err := config.New()

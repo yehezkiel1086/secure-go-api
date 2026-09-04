@@ -23,7 +23,18 @@ func NewUserHandler(userService port.UserService) *UserHandler {
 	}
 }
 
-// RegisterUser handles POST /api/v1/register
+// RegisterUser registers a new user.
+// @Summary      Register a new user
+// @Description  Creates a new user account with hashed password and default User role (2001)
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Param        request body domain.RegisterUserRequest true "User registration details"
+// @Success      201  {object}  domain.UserResponse
+// @Failure      400  {object}  map[string]string "Bad Request (e.g. validation failure)"
+// @Failure      409  {object}  map[string]string "Conflict (email already registered)"
+// @Failure      500  {object}  map[string]string "Internal Server Error"
+// @Router       /register [post]
 func (h *UserHandler) RegisterUser(c *gin.Context) {
 	var req domain.RegisterUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -44,7 +55,16 @@ func (h *UserHandler) RegisterUser(c *gin.Context) {
 	c.JSON(http.StatusCreated, res)
 }
 
-// ConfirmEmail handles GET /api/v1/confirm-email?token=...
+// ConfirmEmail confirms user email via one-time token.
+// @Summary      Confirm user email
+// @Description  Verifies a user's email using a SHA-256 hashed verification token from query parameters
+// @Tags         users
+// @Produce      json
+// @Param        token  query     string  true  "Email verification token"
+// @Success      200    {object}  map[string]string "Email verified successfully"
+// @Failure      400    {object}  map[string]string "Invalid or expired verification token"
+// @Failure      500    {object}  map[string]string "Internal Server Error"
+// @Router       /confirm-email [get]
 func (h *UserHandler) ConfirmEmail(c *gin.Context) {
 	token := c.Query("token")
 	if token == "" {
@@ -69,7 +89,16 @@ func (h *UserHandler) ConfirmEmail(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "email verified successfully"})
 }
 
-// GetUsers handles GET /api/v1/users
+// GetUsers retrieves a paginated list of users.
+// @Summary      List users
+// @Description  Retrieves a paginated list of users ordered by creation date descending
+// @Tags         users
+// @Produce      json
+// @Param        page       query     int  false  "Page number (default: 1)"
+// @Param        page_size  query     int  false  "Items per page (default: 10, max: 100)"
+// @Success      200        {object}  domain.PaginatedUsersResponse
+// @Failure      500        {object}  map[string]string "Internal Server Error"
+// @Router       /users [get]
 func (h *UserHandler) GetUsers(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
@@ -83,7 +112,17 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, res)
 }
 
-// GetUserByID handles GET /api/v1/users/:id
+// GetUserByID retrieves a user profile by ID.
+// @Summary      Get user by ID
+// @Description  Retrieves user details by their UUID primary key
+// @Tags         users
+// @Produce      json
+// @Param        id   path      string  true  "User UUID"
+// @Success      200  {object}  domain.UserResponse
+// @Failure      400  {object}  map[string]string "Invalid UUID format"
+// @Failure      404  {object}  map[string]string "User not found"
+// @Failure      500  {object}  map[string]string "Internal Server Error"
+// @Router       /users/{id} [get]
 func (h *UserHandler) GetUserByID(c *gin.Context) {
 	var id pgtype.UUID
 	if err := id.Scan(c.Param("id")); err != nil || !id.Valid {
@@ -104,7 +143,19 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 	c.JSON(http.StatusOK, res)
 }
 
-// UpdateUserName handles PATCH /api/v1/users/:id
+// UpdateUserName updates a user's display name.
+// @Summary      Update user name
+// @Description  Updates the display name of a user identified by UUID
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Param        id       path      string                        true  "User UUID"
+// @Param        request  body      domain.UpdateUserNameRequest  true  "Updated user display name"
+// @Success      200      {object}  domain.UserResponse
+// @Failure      400      {object}  map[string]string "Invalid UUID or request body"
+// @Failure      404      {object}  map[string]string "User not found"
+// @Failure      500      {object}  map[string]string "Internal Server Error"
+// @Router       /users/{id} [patch]
 func (h *UserHandler) UpdateUserName(c *gin.Context) {
 	var id pgtype.UUID
 	if err := id.Scan(c.Param("id")); err != nil || !id.Valid {
