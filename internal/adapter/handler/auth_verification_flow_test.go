@@ -176,8 +176,9 @@ func TestE2E_Registration_EmailVerification_LoginFlow(t *testing.T) {
 
 	userHandler := handler.NewUserHandler(userSvc)
 	authHandler := handler.NewAuthHandler(authSvc, conf.JWT, conf.App)
+	jobHandler := handler.NewJobHandler(nil)
 
-	router := handler.NewRouter(conf, userHandler, authHandler)
+	router := handler.NewRouter(conf, userHandler, authHandler, jobHandler)
 
 	// Step 1: Register with invalid email format -> must return 400 Bad Request
 	badReg := domain.RegisterUserRequest{

@@ -1,13 +1,3 @@
--- =============================================================================
--- queries/user.sql
--- Maps to: internal/core/port/user.go → UserRepository interface
--- =============================================================================
-
-
--- ---------------------------------------------------------------------------
--- CreateUser
--- Called by: UserService.RegisterUser
--- ---------------------------------------------------------------------------
 -- name: CreateUser :one
 INSERT INTO users (
     name,
@@ -16,10 +6,10 @@ INSERT INTO users (
     role
 )
 VALUES (
-    $1,  -- name
-    $2,  -- email
-    $3,  -- password_hash  (bcrypt, never plaintext)
-    $4   -- role           ('user' | 'admin')
+    $1,
+    $2,
+    $3,
+    $4
 )
 RETURNING
     id,
@@ -30,12 +20,6 @@ RETURNING
     created_at,
     updated_at;
 
-
--- ---------------------------------------------------------------------------
--- GetUserByEmail
--- Called by: AuthService.Login, AuthService.RequestPasswordReset
--- Note: returns full row including password_hash for credential comparison.
--- ---------------------------------------------------------------------------
 -- name: GetUserByEmail :one
 SELECT
     id,
@@ -54,11 +38,6 @@ FROM users
 WHERE email = $1
 LIMIT 1;
 
-
--- ---------------------------------------------------------------------------
--- GetUserByID
--- Called by: AuthService.RefreshToken (token claims → user lookup)
--- ---------------------------------------------------------------------------
 -- name: GetUserByID :one
 SELECT
     id,
@@ -72,12 +51,6 @@ FROM users
 WHERE id = $1
 LIMIT 1;
 
-
--- ---------------------------------------------------------------------------
--- ListUsers
--- Called by: UserService.GetUsers  (Admin-only endpoint: GET /users)
--- Paginated with LIMIT / OFFSET for large result sets.
--- ---------------------------------------------------------------------------
 -- name: ListUsers :many
 SELECT
     id,
@@ -89,22 +62,12 @@ SELECT
     updated_at
 FROM users
 ORDER BY created_at DESC
-LIMIT  $1   -- page_size
-OFFSET $2;  -- page_offset
+LIMIT  $1
+OFFSET $2;
 
-
--- ---------------------------------------------------------------------------
--- CountUsers
--- Companion to ListUsers for pagination metadata.
--- ---------------------------------------------------------------------------
 -- name: CountUsers :one
 SELECT COUNT(*) FROM users;
 
-
--- ---------------------------------------------------------------------------
--- UpdateUserName
--- Called by: UserService.UpdateUser (profile edits)
--- ---------------------------------------------------------------------------
 -- name: UpdateUserName :one
 UPDATE users
 SET
@@ -119,41 +82,23 @@ RETURNING
     is_email_verified,
     updated_at;
 
-
--- ---------------------------------------------------------------------------
--- UpdateUserPassword
--- Called by: AuthService.ResetPassword (after token validation)
--- Clears the reset token atomically in the same statement.
--- ---------------------------------------------------------------------------
 -- name: UpdateUserPassword :exec
 UPDATE users
 SET
-    password_hash                   = $2,   -- new bcrypt hash
+    password_hash                   = $2,
     password_reset_token_hash       = NULL,
     password_reset_token_expires_at = NULL,
     updated_at                      = NOW()
 WHERE id = $1;
 
-
--- ---------------------------------------------------------------------------
--- SetEmailVerifyToken
--- Called by: UserService.SendVerificationEmail
--- Stores SHA-256 hash; raw token is emailed to the user only.
--- ---------------------------------------------------------------------------
 -- name: SetEmailVerifyToken :exec
 UPDATE users
 SET
-    email_verify_token_hash       = $2,   -- SHA-256(raw_token)
-    email_verify_token_expires_at = $3,   -- NOW() + EMAIL_TOKEN_DURATION
+    email_verify_token_hash       = $2,
+    email_verify_token_expires_at = $3,
     updated_at                    = NOW()
 WHERE id = $1;
 
-
--- ---------------------------------------------------------------------------
--- GetUserByEmailVerifyToken
--- Called by: UserService.VerifyEmail (GET /confirm-email?token=…)
--- Looks up the hashed token; application layer validates expiry + marks verified.
--- ---------------------------------------------------------------------------
 -- name: GetUserByEmailVerifyToken :one
 SELECT
     id,
@@ -165,15 +110,9 @@ SELECT
     email_verify_token_expires_at,
     updated_at
 FROM users
-WHERE email_verify_token_hash = $1   -- SHA-256(raw_token from query param)
+WHERE email_verify_token_hash = $1
 LIMIT 1;
 
-
--- ---------------------------------------------------------------------------
--- MarkEmailVerified
--- Called by: UserService.VerifyEmail after token validation passes.
--- Clears token columns atomically.
--- ---------------------------------------------------------------------------
 -- name: MarkEmailVerified :exec
 UPDATE users
 SET
@@ -183,26 +122,14 @@ SET
     updated_at                    = NOW()
 WHERE id = $1;
 
-
--- ---------------------------------------------------------------------------
--- SetPasswordResetToken
--- Called by: AuthService.RequestPasswordReset
--- Enumeration-safe: the handler always returns 200 regardless of match.
--- ---------------------------------------------------------------------------
 -- name: SetPasswordResetToken :exec
 UPDATE users
 SET
-    password_reset_token_hash       = $2,   -- SHA-256(raw_token)
-    password_reset_token_expires_at = $3,   -- NOW() + reset window
+    password_reset_token_hash       = $2,
+    password_reset_token_expires_at = $3,
     updated_at                      = NOW()
 WHERE email = $1;
 
-
--- ---------------------------------------------------------------------------
--- GetUserByPasswordResetToken
--- Called by: AuthService.ResetPassword
--- Application layer must still check expires_at before accepting the token.
--- ---------------------------------------------------------------------------
 -- name: GetUserByPasswordResetToken :one
 SELECT
     id,
@@ -210,5 +137,5 @@ SELECT
     password_reset_token_hash,
     password_reset_token_expires_at
 FROM users
-WHERE password_reset_token_hash = $1   -- SHA-256(raw_token from request body)
+WHERE password_reset_token_hash = $1
 LIMIT 1;

@@ -12,16 +12,9 @@ import (
 )
 
 const countUsers = `-- name: CountUsers :one
-
-
 SELECT COUNT(*) FROM users
 `
 
-// page_offset
-// ---------------------------------------------------------------------------
-// CountUsers
-// Companion to ListUsers for pagination metadata.
-// ---------------------------------------------------------------------------
 func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 	row := q.db.QueryRow(ctx, countUsers)
 	var count int64
@@ -30,8 +23,6 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 }
 
 const createUser = `-- name: CreateUser :one
-
-
 INSERT INTO users (
     name,
     email,
@@ -39,10 +30,10 @@ INSERT INTO users (
     role
 )
 VALUES (
-    $1,  -- name
-    $2,  -- email
-    $3,  -- password_hash  (bcrypt, never plaintext)
-    $4   -- role           ('user' | 'admin')
+    $1,
+    $2,
+    $3,
+    $4
 )
 RETURNING
     id,
@@ -71,14 +62,6 @@ type CreateUserRow struct {
 	UpdatedAt       pgtype.Timestamptz
 }
 
-// =============================================================================
-// queries/user.sql
-// Maps to: internal/core/port/user.go → UserRepository interface
-// =============================================================================
-// ---------------------------------------------------------------------------
-// CreateUser
-// Called by: UserService.RegisterUser
-// ---------------------------------------------------------------------------
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
 	row := q.db.QueryRow(ctx, createUser,
 		arg.Name,
@@ -118,11 +101,6 @@ WHERE email = $1
 LIMIT 1
 `
 
-// ---------------------------------------------------------------------------
-// GetUserByEmail
-// Called by: AuthService.Login, AuthService.RequestPasswordReset
-// Note: returns full row including password_hash for credential comparison.
-// ---------------------------------------------------------------------------
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByEmail, email)
 	var i User
@@ -154,7 +132,7 @@ SELECT
     email_verify_token_expires_at,
     updated_at
 FROM users
-WHERE email_verify_token_hash = $1   -- SHA-256(raw_token from query param)
+WHERE email_verify_token_hash = $1
 LIMIT 1
 `
 
@@ -169,11 +147,6 @@ type GetUserByEmailVerifyTokenRow struct {
 	UpdatedAt                 pgtype.Timestamptz
 }
 
-// ---------------------------------------------------------------------------
-// GetUserByEmailVerifyToken
-// Called by: UserService.VerifyEmail (GET /confirm-email?token=…)
-// Looks up the hashed token; application layer validates expiry + marks verified.
-// ---------------------------------------------------------------------------
 func (q *Queries) GetUserByEmailVerifyToken(ctx context.Context, emailVerifyTokenHash pgtype.Text) (GetUserByEmailVerifyTokenRow, error) {
 	row := q.db.QueryRow(ctx, getUserByEmailVerifyToken, emailVerifyTokenHash)
 	var i GetUserByEmailVerifyTokenRow
@@ -214,10 +187,6 @@ type GetUserByIDRow struct {
 	UpdatedAt       pgtype.Timestamptz
 }
 
-// ---------------------------------------------------------------------------
-// GetUserByID
-// Called by: AuthService.RefreshToken (token claims → user lookup)
-// ---------------------------------------------------------------------------
 func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (GetUserByIDRow, error) {
 	row := q.db.QueryRow(ctx, getUserByID, id)
 	var i GetUserByIDRow
@@ -240,7 +209,7 @@ SELECT
     password_reset_token_hash,
     password_reset_token_expires_at
 FROM users
-WHERE password_reset_token_hash = $1   -- SHA-256(raw_token from request body)
+WHERE password_reset_token_hash = $1
 LIMIT 1
 `
 
@@ -251,11 +220,6 @@ type GetUserByPasswordResetTokenRow struct {
 	PasswordResetTokenExpiresAt pgtype.Timestamptz
 }
 
-// ---------------------------------------------------------------------------
-// GetUserByPasswordResetToken
-// Called by: AuthService.ResetPassword
-// Application layer must still check expires_at before accepting the token.
-// ---------------------------------------------------------------------------
 func (q *Queries) GetUserByPasswordResetToken(ctx context.Context, passwordResetTokenHash pgtype.Text) (GetUserByPasswordResetTokenRow, error) {
 	row := q.db.QueryRow(ctx, getUserByPasswordResetToken, passwordResetTokenHash)
 	var i GetUserByPasswordResetTokenRow
@@ -279,7 +243,7 @@ SELECT
     updated_at
 FROM users
 ORDER BY created_at DESC
-LIMIT  $1   -- page_size
+LIMIT  $1
 OFFSET $2
 `
 
@@ -298,11 +262,6 @@ type ListUsersRow struct {
 	UpdatedAt       pgtype.Timestamptz
 }
 
-// ---------------------------------------------------------------------------
-// ListUsers
-// Called by: UserService.GetUsers  (Admin-only endpoint: GET /users)
-// Paginated with LIMIT / OFFSET for large result sets.
-// ---------------------------------------------------------------------------
 func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUsersRow, error) {
 	rows, err := q.db.Query(ctx, listUsers, arg.Limit, arg.Offset)
 	if err != nil {
@@ -341,11 +300,6 @@ SET
 WHERE id = $1
 `
 
-// ---------------------------------------------------------------------------
-// MarkEmailVerified
-// Called by: UserService.VerifyEmail after token validation passes.
-// Clears token columns atomically.
-// ---------------------------------------------------------------------------
 func (q *Queries) MarkEmailVerified(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, markEmailVerified, id)
 	return err
@@ -354,8 +308,8 @@ func (q *Queries) MarkEmailVerified(ctx context.Context, id pgtype.UUID) error {
 const setEmailVerifyToken = `-- name: SetEmailVerifyToken :exec
 UPDATE users
 SET
-    email_verify_token_hash       = $2,   -- SHA-256(raw_token)
-    email_verify_token_expires_at = $3,   -- NOW() + EMAIL_TOKEN_DURATION
+    email_verify_token_hash       = $2,
+    email_verify_token_expires_at = $3,
     updated_at                    = NOW()
 WHERE id = $1
 `
@@ -366,11 +320,6 @@ type SetEmailVerifyTokenParams struct {
 	EmailVerifyTokenExpiresAt pgtype.Timestamptz
 }
 
-// ---------------------------------------------------------------------------
-// SetEmailVerifyToken
-// Called by: UserService.SendVerificationEmail
-// Stores SHA-256 hash; raw token is emailed to the user only.
-// ---------------------------------------------------------------------------
 func (q *Queries) SetEmailVerifyToken(ctx context.Context, arg SetEmailVerifyTokenParams) error {
 	_, err := q.db.Exec(ctx, setEmailVerifyToken, arg.ID, arg.EmailVerifyTokenHash, arg.EmailVerifyTokenExpiresAt)
 	return err
@@ -379,8 +328,8 @@ func (q *Queries) SetEmailVerifyToken(ctx context.Context, arg SetEmailVerifyTok
 const setPasswordResetToken = `-- name: SetPasswordResetToken :exec
 UPDATE users
 SET
-    password_reset_token_hash       = $2,   -- SHA-256(raw_token)
-    password_reset_token_expires_at = $3,   -- NOW() + reset window
+    password_reset_token_hash       = $2,
+    password_reset_token_expires_at = $3,
     updated_at                      = NOW()
 WHERE email = $1
 `
@@ -391,11 +340,6 @@ type SetPasswordResetTokenParams struct {
 	PasswordResetTokenExpiresAt pgtype.Timestamptz
 }
 
-// ---------------------------------------------------------------------------
-// SetPasswordResetToken
-// Called by: AuthService.RequestPasswordReset
-// Enumeration-safe: the handler always returns 200 regardless of match.
-// ---------------------------------------------------------------------------
 func (q *Queries) SetPasswordResetToken(ctx context.Context, arg SetPasswordResetTokenParams) error {
 	_, err := q.db.Exec(ctx, setPasswordResetToken, arg.Email, arg.PasswordResetTokenHash, arg.PasswordResetTokenExpiresAt)
 	return err
@@ -430,10 +374,6 @@ type UpdateUserNameRow struct {
 	UpdatedAt       pgtype.Timestamptz
 }
 
-// ---------------------------------------------------------------------------
-// UpdateUserName
-// Called by: UserService.UpdateUser (profile edits)
-// ---------------------------------------------------------------------------
 func (q *Queries) UpdateUserName(ctx context.Context, arg UpdateUserNameParams) (UpdateUserNameRow, error) {
 	row := q.db.QueryRow(ctx, updateUserName, arg.ID, arg.Name)
 	var i UpdateUserNameRow
@@ -451,7 +391,7 @@ func (q *Queries) UpdateUserName(ctx context.Context, arg UpdateUserNameParams) 
 const updateUserPassword = `-- name: UpdateUserPassword :exec
 UPDATE users
 SET
-    password_hash                   = $2,   -- new bcrypt hash
+    password_hash                   = $2,
     password_reset_token_hash       = NULL,
     password_reset_token_expires_at = NULL,
     updated_at                      = NOW()
@@ -463,11 +403,6 @@ type UpdateUserPasswordParams struct {
 	PasswordHash string
 }
 
-// ---------------------------------------------------------------------------
-// UpdateUserPassword
-// Called by: AuthService.ResetPassword (after token validation)
-// Clears the reset token atomically in the same statement.
-// ---------------------------------------------------------------------------
 func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
 	_, err := q.db.Exec(ctx, updateUserPassword, arg.ID, arg.PasswordHash)
 	return err

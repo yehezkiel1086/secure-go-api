@@ -85,7 +85,8 @@ func setupTestRouter(svc port.UserService) *handler.Router {
 	}
 	userH := handler.NewUserHandler(svc)
 	authH := handler.NewAuthHandler(nil, conf.JWT, conf.App)
-	return handler.NewRouter(conf, userH, authH)
+	jobH := handler.NewJobHandler(nil)
+	return handler.NewRouter(conf, userH, authH, jobH)
 }
 
 func TestHandler_HealthCheck(t *testing.T) {

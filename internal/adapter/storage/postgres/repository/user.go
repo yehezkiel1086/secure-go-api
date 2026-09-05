@@ -14,26 +14,22 @@ import (
 
 var _ port.UserRepository = (*UserRepository)(nil)
 
-// UserRepository implements port.UserRepository using sqlc-generated queries.
 type UserRepository struct {
 	queries *sqlc.Queries
 }
 
-// NewUserRepository creates a new UserRepository using the provided sqlc Queries instance.
 func NewUserRepository(queries *sqlc.Queries) *UserRepository {
 	return &UserRepository{
 		queries: queries,
 	}
 }
 
-// NewUserRepositoryWithDB creates a new UserRepository from a sqlc.DBTX database connection.
 func NewUserRepositoryWithDB(db sqlc.DBTX) *UserRepository {
 	return &UserRepository{
 		queries: sqlc.New(db),
 	}
 }
 
-// CreateUser inserts a new user record and maps the returned row to domain.User.
 func (r *UserRepository) CreateUser(ctx context.Context, user *domain.User) (*domain.User, error) {
 	row, err := r.queries.CreateUser(ctx, sqlc.CreateUserParams{
 		Name:         user.Name,
@@ -57,7 +53,6 @@ func (r *UserRepository) CreateUser(ctx context.Context, user *domain.User) (*do
 	}, nil
 }
 
-// GetUserByID retrieves a user by their UUID primary key.
 func (r *UserRepository) GetUserByID(ctx context.Context, id pgtype.UUID) (*domain.User, error) {
 	row, err := r.queries.GetUserByID(ctx, id)
 	if err != nil {
@@ -78,7 +73,6 @@ func (r *UserRepository) GetUserByID(ctx context.Context, id pgtype.UUID) (*doma
 	}, nil
 }
 
-// GetUserByEmail retrieves a full user record including password hash by email.
 func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
 	row, err := r.queries.GetUserByEmail(ctx, email)
 	if err != nil {
@@ -104,7 +98,6 @@ func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*dom
 	}, nil
 }
 
-// GetUserByEmailVerifyToken retrieves a user matching the hashed email verification token.
 func (r *UserRepository) GetUserByEmailVerifyToken(ctx context.Context, tokenHash pgtype.Text) (*domain.User, error) {
 	row, err := r.queries.GetUserByEmailVerifyToken(ctx, tokenHash)
 	if err != nil {
@@ -126,7 +119,6 @@ func (r *UserRepository) GetUserByEmailVerifyToken(ctx context.Context, tokenHas
 	}, nil
 }
 
-// GetUserByPasswordResetToken retrieves a user matching the hashed password reset token.
 func (r *UserRepository) GetUserByPasswordResetToken(ctx context.Context, tokenHash pgtype.Text) (*domain.User, error) {
 	row, err := r.queries.GetUserByPasswordResetToken(ctx, tokenHash)
 	if err != nil {
@@ -144,7 +136,6 @@ func (r *UserRepository) GetUserByPasswordResetToken(ctx context.Context, tokenH
 	}, nil
 }
 
-// ListUsers returns a paginated list of users ordered by creation date descending.
 func (r *UserRepository) ListUsers(ctx context.Context, limit, offset int32) ([]*domain.User, error) {
 	rows, err := r.queries.ListUsers(ctx, sqlc.ListUsersParams{
 		Limit:  limit,
@@ -170,7 +161,6 @@ func (r *UserRepository) ListUsers(ctx context.Context, limit, offset int32) ([]
 	return users, nil
 }
 
-// CountUsers returns the total number of users.
 func (r *UserRepository) CountUsers(ctx context.Context) (int64, error) {
 	count, err := r.queries.CountUsers(ctx)
 	if err != nil {
@@ -179,7 +169,6 @@ func (r *UserRepository) CountUsers(ctx context.Context) (int64, error) {
 	return count, nil
 }
 
-// UpdateUserName updates a user's display name and returns the updated user.
 func (r *UserRepository) UpdateUserName(ctx context.Context, id pgtype.UUID, name string) (*domain.User, error) {
 	row, err := r.queries.UpdateUserName(ctx, sqlc.UpdateUserNameParams{
 		ID:   id,
@@ -202,7 +191,6 @@ func (r *UserRepository) UpdateUserName(ctx context.Context, id pgtype.UUID, nam
 	}, nil
 }
 
-// UpdateUserPassword updates the password hash and clears the password reset token atomically.
 func (r *UserRepository) UpdateUserPassword(ctx context.Context, id pgtype.UUID, passwordHash string) error {
 	err := r.queries.UpdateUserPassword(ctx, sqlc.UpdateUserPasswordParams{
 		ID:           id,
@@ -214,7 +202,6 @@ func (r *UserRepository) UpdateUserPassword(ctx context.Context, id pgtype.UUID,
 	return nil
 }
 
-// SetEmailVerifyToken persists the hashed verification token and its expiration timestamp.
 func (r *UserRepository) SetEmailVerifyToken(ctx context.Context, id pgtype.UUID, tokenHash pgtype.Text, expiresAt pgtype.Timestamptz) error {
 	err := r.queries.SetEmailVerifyToken(ctx, sqlc.SetEmailVerifyTokenParams{
 		ID:                        id,
@@ -227,7 +214,6 @@ func (r *UserRepository) SetEmailVerifyToken(ctx context.Context, id pgtype.UUID
 	return nil
 }
 
-// MarkEmailVerified sets is_email_verified to true and clears the verification token columns.
 func (r *UserRepository) MarkEmailVerified(ctx context.Context, id pgtype.UUID) error {
 	err := r.queries.MarkEmailVerified(ctx, id)
 	if err != nil {
@@ -236,7 +222,6 @@ func (r *UserRepository) MarkEmailVerified(ctx context.Context, id pgtype.UUID) 
 	return nil
 }
 
-// SetPasswordResetToken sets the hashed password reset token and its expiration timestamp for the given email.
 func (r *UserRepository) SetPasswordResetToken(ctx context.Context, email string, tokenHash pgtype.Text, expiresAt pgtype.Timestamptz) error {
 	err := r.queries.SetPasswordResetToken(ctx, sqlc.SetPasswordResetTokenParams{
 		Email:                       email,

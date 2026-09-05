@@ -40,12 +40,10 @@ func handleError(msg string, err error) {
 // @name Authorization
 // @description Type "Bearer" followed by a space and JWT token.
 func main() {
-	// load .env configs
 	conf, err := config.New()
 	handleError("failed to load .env configs", err)
 	slog.Info(".env configs loaded successfully", "app", conf.App.Name, "env", conf.App.Env)
 
-	// init db
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -54,17 +52,14 @@ func main() {
 	defer pool.Close()
 	slog.Info("connected to postgres database successfully")
 
-	// auto db migrations
 	err = postgres.Migrate(ctx, pool)
 	handleError("failed to run database migrations", err)
 
-	// init rabbitmq
 	rabbitClient, err := rabbitmq.NewClient(conf.Rabbitmq)
 	handleError("failed to connect to rabbitmq", err)
 	defer rabbitClient.Close()
 	slog.Info("connected to rabbitmq successfully")
 
-	// initialize email publisher and consumer
 	emailPublisher, err := rabbitmq.NewPublisher(rabbitClient)
 	handleError("failed to create rabbitmq publisher", err)
 	defer emailPublisher.Close()
@@ -82,20 +77,20 @@ func main() {
 		}
 	}()
 
-	// dependency injection
 	userRepo := repository.NewUserRepositoryWithDB(pool)
 	authRepo := repository.NewAuthRepositoryWithDB(pool)
+	jobRepo := repository.NewJobRepositoryWithDB(pool)
 
 	userService := service.NewUserService(userRepo, emailPublisher)
 	authService := service.NewAuthService(authRepo, userRepo, conf.JWT)
+	jobService := service.NewJobService(jobRepo)
 
 	userHandler := handler.NewUserHandler(userService)
 	authHandler := handler.NewAuthHandler(authService, conf.JWT, conf.App)
+	jobHandler := handler.NewJobHandler(jobService)
 
-	// init router
-	router := handler.NewRouter(conf, userHandler, authHandler)
+	router := handler.NewRouter(conf, userHandler, authHandler, jobHandler)
 
-	// start server
 	slog.Info("starting server", "host", conf.HTTP.Host, "port", conf.HTTP.Port)
 	if err := router.Run(); err != nil {
 		handleError("failed to run server", err)

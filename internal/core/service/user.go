@@ -22,13 +22,11 @@ const (
 
 var _ port.UserService = (*UserService)(nil)
 
-// UserService coordinates user domain operations.
 type UserService struct {
 	userRepo       port.UserRepository
 	emailPublisher port.EmailPublisher
 }
 
-// NewUserService creates a new UserService with the injected UserRepository and EmailPublisher ports.
 func NewUserService(userRepo port.UserRepository, emailPublisher port.EmailPublisher) *UserService {
 	return &UserService{
 		userRepo:       userRepo,
@@ -36,16 +34,13 @@ func NewUserService(userRepo port.UserRepository, emailPublisher port.EmailPubli
 	}
 }
 
-// RegisterUser registers a new user, hashes password, saves record, and dispatches a verification token to RabbitMQ.
 func (s *UserService) RegisterUser(ctx context.Context, req *domain.RegisterUserRequest) (*domain.UserResponse, error) {
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 
-	// 1. Strict RFC email format and domain validation
 	if err := util.ValidateEmail(email); err != nil {
 		return nil, domain.ErrInvalidEmailFormat
 	}
 
-	// 2. Check if user already exists
 	existing, err := s.userRepo.GetUserByEmail(ctx, email)
 	if err == nil && existing != nil {
 		return nil, domain.ErrEmailAlreadyExists
@@ -53,7 +48,6 @@ func (s *UserService) RegisterUser(ctx context.Context, req *domain.RegisterUser
 		return nil, fmt.Errorf("checking existing email: %w", err)
 	}
 
-	// 3. Hash password using bcrypt
 	hashedPassword, err := util.HashPassword(req.Password)
 	if err != nil {
 		return nil, fmt.Errorf("hashing password: %w", err)
@@ -71,7 +65,7 @@ func (s *UserService) RegisterUser(ctx context.Context, req *domain.RegisterUser
 		return nil, fmt.Errorf("creating user: %w", err)
 	}
 
-	// 4. Generate cryptographically secure one-time verification token (32 bytes = 256-bit entropy)
+	// generate secure one-time verification token
 	rawToken, err := util.GenerateSecureToken(32)
 	if err != nil {
 		return nil, fmt.Errorf("generating verification token: %w", err)
@@ -80,7 +74,6 @@ func (s *UserService) RegisterUser(ctx context.Context, req *domain.RegisterUser
 	tokenHash := util.HashToken(rawToken)
 	expiresAt := time.Now().Add(EmailVerificationTokenDuration)
 
-	// 5. Persist SHA-256 hash and expiration in DB (raw token is never persisted)
 	err = s.userRepo.SetEmailVerifyToken(
 		ctx,
 		created.ID,
@@ -91,7 +84,6 @@ func (s *UserService) RegisterUser(ctx context.Context, req *domain.RegisterUser
 		return nil, fmt.Errorf("saving email verification token: %w", err)
 	}
 
-	// 6. Asynchronously dispatch verification email via RabbitMQ
 	if s.emailPublisher != nil {
 		emailPayload := &domain.EmailPayload{
 			To:        created.Email,
@@ -109,7 +101,6 @@ func (s *UserService) RegisterUser(ctx context.Context, req *domain.RegisterUser
 	return created.ToResponse(), nil
 }
 
-// GetUserByID retrieves a user by their UUID primary key.
 func (s *UserService) GetUserByID(ctx context.Context, id pgtype.UUID) (*domain.UserResponse, error) {
 	user, err := s.userRepo.GetUserByID(ctx, id)
 	if err != nil {
@@ -118,7 +109,6 @@ func (s *UserService) GetUserByID(ctx context.Context, id pgtype.UUID) (*domain.
 	return user.ToResponse(), nil
 }
 
-// GetUsers returns a paginated list of users along with pagination metadata.
 func (s *UserService) GetUsers(ctx context.Context, page, pageSize int32) (*domain.PaginatedUsersResponse, error) {
 	if page < 1 {
 		page = 1
@@ -162,7 +152,6 @@ func (s *UserService) GetUsers(ctx context.Context, page, pageSize int32) (*doma
 	}, nil
 }
 
-// UpdateUserName updates a user's display name.
 func (s *UserService) UpdateUserName(ctx context.Context, id pgtype.UUID, req *domain.UpdateUserNameRequest) (*domain.UserResponse, error) {
 	name := strings.TrimSpace(req.Name)
 	user, err := s.userRepo.UpdateUserName(ctx, id, name)
@@ -172,7 +161,6 @@ func (s *UserService) UpdateUserName(ctx context.Context, id pgtype.UUID, req *d
 	return user.ToResponse(), nil
 }
 
-// VerifyEmail verifies a user's email matching a SHA-256 hashed verification token.
 func (s *UserService) VerifyEmail(ctx context.Context, token string) error {
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -189,12 +177,10 @@ func (s *UserService) VerifyEmail(ctx context.Context, token string) error {
 		return err
 	}
 
-	// Verify expiration
 	if user.EmailVerifyTokenExpiresAt.Valid && time.Now().After(user.EmailVerifyTokenExpiresAt.Time) {
 		return domain.ErrTokenExpired
 	}
 
-	// Mark verified and atomically clear token columns
 	if err := s.userRepo.MarkEmailVerified(ctx, user.ID); err != nil {
 		return fmt.Errorf("marking email verified: %w", err)
 	}
@@ -202,8 +188,6 @@ func (s *UserService) VerifyEmail(ctx context.Context, token string) error {
 	return nil
 }
 
-// ResendVerificationEmail generates a fresh verification token and dispatches an email via RabbitMQ.
-// It is enumeration-safe: returns nil even if the email does not exist or is already verified.
 func (s *UserService) ResendVerificationEmail(ctx context.Context, email string) error {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if err := util.ValidateEmail(email); err != nil {
@@ -213,18 +197,16 @@ func (s *UserService) ResendVerificationEmail(ctx context.Context, email string)
 	user, err := s.userRepo.GetUserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			// Enumeration safety: return nil silently
+			// do not leak user existence
 			return nil
 		}
 		return fmt.Errorf("retrieving user: %w", err)
 	}
 
-	// If account is already verified, do nothing
 	if user.IsEmailVerified {
 		return nil
 	}
 
-	// Generate fresh token and new 15-minute expiration
 	rawToken, err := util.GenerateSecureToken(32)
 	if err != nil {
 		return fmt.Errorf("generating verification token: %w", err)

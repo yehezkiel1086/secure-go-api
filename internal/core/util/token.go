@@ -6,11 +6,9 @@ import (
 	"fmt"
 )
 
-// GenerateSecureToken generates a cryptographically random token of byteLen bytes,
-// returning it as a hexadecimal string (e.g. 32 bytes yields 64 hex characters, 256 bits entropy).
 func GenerateSecureToken(byteLen int) (string, error) {
 	if byteLen <= 0 {
-		byteLen = 32 // default 256-bit entropy
+		byteLen = 32
 	}
 
 	b := make([]byte, byteLen)

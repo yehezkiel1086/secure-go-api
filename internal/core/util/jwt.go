@@ -27,19 +27,16 @@ type JWTClaims struct {
 	jwt.RegisteredClaims
 }
 
-// HashToken generates a SHA-256 hex string of the given raw token.
 func HashToken(token string) string {
 	h := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(h[:])
 }
 
-// GenerateToken generates a signed JWT string for the given token type.
 func GenerateToken(cfg *config.JWT, tokenType Token, user *domain.User) (string, error) {
 	tokenStr, _, err := GenerateTokenWithExpiry(cfg, tokenType, user)
 	return tokenStr, err
 }
 
-// GenerateTokenWithExpiry generates a signed JWT string and returns its exact expiration time.
 func GenerateTokenWithExpiry(cfg *config.JWT, tokenType Token, user *domain.User) (string, time.Time, error) {
 	var signingKey []byte
 	var duration time.Duration
@@ -49,14 +46,14 @@ func GenerateTokenWithExpiry(cfg *config.JWT, tokenType Token, user *domain.User
 		signingKey = []byte(cfg.AccessTokenSecret)
 		d, err := strconv.Atoi(cfg.AccessTokenDuration)
 		if err != nil || d <= 0 {
-			d = 15 // default 15 minutes
+			d = 15
 		}
 		duration = time.Duration(d) * time.Minute
 	case TokenRefresh:
 		signingKey = []byte(cfg.RefreshTokenSecret)
 		d, err := strconv.Atoi(cfg.RefreshTokenDuration)
 		if err != nil || d <= 0 {
-			d = 7 // default 7 days
+			d = 7
 		}
 		duration = time.Duration(d) * time.Hour * 24
 	}
@@ -76,7 +73,6 @@ func GenerateTokenWithExpiry(cfg *config.JWT, tokenType Token, user *domain.User
 	now := time.Now()
 	expiresAt := now.Add(duration)
 
-	// Cryptographic entropy for unique token ID (jti)
 	var jtiBytes [16]byte
 	_, _ = rand.Read(jtiBytes[:])
 	jti := hex.EncodeToString(jtiBytes[:])
@@ -103,7 +99,6 @@ func GenerateTokenWithExpiry(cfg *config.JWT, tokenType Token, user *domain.User
 	return ss, expiresAt, nil
 }
 
-// GenerateTokenPair generates both an access token and a refresh token for the user.
 func GenerateTokenPair(cfg *config.JWT, user *domain.User) (*domain.TokenPair, error) {
 	accessToken, accessExpiry, err := GenerateTokenWithExpiry(cfg, TokenAccess, user)
 	if err != nil {
@@ -123,7 +118,6 @@ func GenerateTokenPair(cfg *config.JWT, user *domain.User) (*domain.TokenPair, e
 	}, nil
 }
 
-// ParseToken parses and verifies the token signature and claims for the specified token type.
 func ParseToken(cfg *config.JWT, tokenType Token, tokenString string) (*JWTClaims, error) {
 	var signingKey []byte
 

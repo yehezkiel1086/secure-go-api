@@ -17,11 +17,11 @@ type Router struct {
 	conf *config.Container
 }
 
-// NewRouter constructs and configures the Gin HTTP router with all application routes.
 func NewRouter(
 	conf *config.Container,
 	userHandler *UserHandler,
 	authHandler *AuthHandler,
+	jobHandler *JobHandler,
 ) *Router {
 	if conf.App.Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -29,10 +29,8 @@ func NewRouter(
 
 	r := gin.Default()
 
-	// Swagger UI documentation endpoint
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	// Global Healthcheck
 	// @Summary      Health check
 	// @Description  Returns system health status and configuration details
 	// @Tags         health
@@ -49,28 +47,33 @@ func NewRouter(
 
 	auth := AuthMiddleware(conf.JWT)
 
-	// API v1 route group
 	v1 := r.Group("/api/v1")
 	{
-		// public routes (no authentication required)
+		// public routes
 		v1.POST("/register", userHandler.RegisterUser)
 		v1.GET("/confirm-email", userHandler.ConfirmEmail)
 		v1.POST("/resend-verification", userHandler.ResendVerification)
 		v1.POST("/login", authHandler.Login)
 		v1.POST("/refresh", authHandler.RefreshToken)
 
-		// authenticated routes (requires valid token + user or admin role)
+		// authenticated (user or admin)
 		authenticated := v1.Group("/", auth, RoleMiddleware(domain.RoleUser, domain.RoleAdmin))
 		{
 			authenticated.POST("/logout", authHandler.Logout)
+			authenticated.GET("/jobs", jobHandler.GetJobs)
+			authenticated.GET("/jobs/:id", jobHandler.GetJobByID)
 		}
 
-		// admin-only routes (requires valid token + admin role)
+		// admin only
 		adminOnly := v1.Group("/", auth, RoleMiddleware(domain.RoleAdmin))
 		{
 			adminOnly.GET("/users", userHandler.GetUsers)
 			adminOnly.GET("/users/:id", userHandler.GetUserByID)
 			adminOnly.PATCH("/users/:id", userHandler.UpdateUserName)
+
+			adminOnly.POST("/jobs", jobHandler.CreateJob)
+			adminOnly.PATCH("/jobs/:id", jobHandler.UpdateJob)
+			adminOnly.DELETE("/jobs/:id", jobHandler.DeleteJob)
 		}
 	}
 
@@ -80,12 +83,10 @@ func NewRouter(
 	}
 }
 
-// ServeHTTP implements the http.Handler interface for testing and interoperability.
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.r.ServeHTTP(w, req)
 }
 
-// Run starts the HTTP server listening on the configured host and port.
 func (r *Router) Run() error {
 	addr := net.JoinHostPort(r.conf.HTTP.Host, r.conf.HTTP.Port)
 	return r.r.Run(addr)

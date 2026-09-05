@@ -1,5 +1,60 @@
 basePath: /api/v1
 definitions:
+  github_com_yehezkiel1086_secure-go-api_internal_core_domain.CreateJobRequest:
+    properties:
+      company:
+        maxLength: 100
+        minLength: 2
+        type: string
+      description:
+        maxLength: 10000
+        minLength: 10
+        type: string
+      location:
+        maxLength: 100
+        minLength: 2
+        type: string
+      salary_max:
+        minimum: 0
+        type: integer
+      salary_min:
+        minimum: 0
+        type: integer
+      title:
+        maxLength: 150
+        minLength: 3
+        type: string
+    required:
+    - company
+    - description
+    - location
+    - title
+    type: object
+  github_com_yehezkiel1086_secure-go-api_internal_core_domain.JobResponse:
+    properties:
+      company:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      created_by_name:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      location:
+        type: string
+      salary_max:
+        type: integer
+      salary_min:
+        type: integer
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
   github_com_yehezkiel1086_secure-go-api_internal_core_domain.LoginRequest:
     properties:
       email:
@@ -16,6 +71,21 @@ definitions:
         $ref: '#/definitions/github_com_yehezkiel1086_secure-go-api_internal_core_domain.TokenPair'
       user:
         $ref: '#/definitions/github_com_yehezkiel1086_secure-go-api_internal_core_domain.UserResponse'
+    type: object
+  github_com_yehezkiel1086_secure-go-api_internal_core_domain.PaginatedJobsResponse:
+    properties:
+      jobs:
+        items:
+          $ref: '#/definitions/github_com_yehezkiel1086_secure-go-api_internal_core_domain.JobResponse'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+      total_pages:
+        type: integer
     type: object
   github_com_yehezkiel1086_secure-go-api_internal_core_domain.PaginatedUsersResponse:
     properties:
@@ -70,6 +140,31 @@ definitions:
       refresh_token:
         type: string
       refresh_token_expires_at:
+        type: string
+    type: object
+  github_com_yehezkiel1086_secure-go-api_internal_core_domain.UpdateJobRequest:
+    properties:
+      company:
+        maxLength: 100
+        minLength: 2
+        type: string
+      description:
+        maxLength: 10000
+        minLength: 10
+        type: string
+      location:
+        maxLength: 100
+        minLength: 2
+        type: string
+      salary_max:
+        minimum: 0
+        type: integer
+      salary_min:
+        minimum: 0
+        type: integer
+      title:
+        maxLength: 150
+        minLength: 3
         type: string
     type: object
   github_com_yehezkiel1086_secure-go-api_internal_core_domain.UpdateUserNameRequest:
@@ -146,6 +241,250 @@ paths:
       summary: Confirm user email
       tags:
       - users
+  /jobs:
+    get:
+      description: Retrieves paginated job listings with optional full-text search
+        (User or Admin)
+      parameters:
+      - description: 'Page number (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Items per page (default: 10, max: 100)'
+        in: query
+        name: page_size
+        type: integer
+      - description: Search query across job titles
+        in: query
+        name: q
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_yehezkiel1086_secure-go-api_internal_core_domain.PaginatedJobsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List job listings
+      tags:
+      - jobs
+    post:
+      consumes:
+      - application/json
+      description: Creates a new job listing with authenticated admin as creator (Admin
+        only)
+      parameters:
+      - description: Job listing details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_yehezkiel1086_secure-go-api_internal_core_domain.CreateJobRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/github_com_yehezkiel1086_secure-go-api_internal_core_domain.JobResponse'
+        "400":
+          description: Bad Request (validation error or invalid salary range)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: 'Forbidden: insufficient permissions'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a job listing
+      tags:
+      - jobs
+  /jobs/{id}:
+    delete:
+      description: Permanently deletes a job listing (Admin only)
+      parameters:
+      - description: Job UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Job deleted successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid UUID format
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: 'Forbidden: insufficient permissions'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Job not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a job listing
+      tags:
+      - jobs
+    get:
+      description: Retrieves details of a specific job listing (User or Admin)
+      parameters:
+      - description: Job UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_yehezkiel1086_secure-go-api_internal_core_domain.JobResponse'
+        "400":
+          description: Invalid UUID format
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Job not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get job listing by ID
+      tags:
+      - jobs
+    patch:
+      consumes:
+      - application/json
+      description: Partially updates a job listing (Admin only)
+      parameters:
+      - description: Job UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated job details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_yehezkiel1086_secure-go-api_internal_core_domain.UpdateJobRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_yehezkiel1086_secure-go-api_internal_core_domain.JobResponse'
+        "400":
+          description: Invalid UUID or request body
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: 'Forbidden: insufficient permissions'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Job not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a job listing
+      tags:
+      - jobs
   /login:
     post:
       consumes:

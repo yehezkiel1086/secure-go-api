@@ -55,7 +55,8 @@ func setupAuthTestRouter(authSvc port.AuthService, userSvc port.UserService) *ha
 	}
 	userH := handler.NewUserHandler(userSvc)
 	authH := handler.NewAuthHandler(authSvc, conf.JWT, conf.App)
-	return handler.NewRouter(conf, userH, authH)
+	jobH := handler.NewJobHandler(nil)
+	return handler.NewRouter(conf, userH, authH, jobH)
 }
 
 func TestAuthHandler_Login_Success(t *testing.T) {

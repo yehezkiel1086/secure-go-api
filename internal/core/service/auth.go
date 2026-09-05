@@ -16,14 +16,12 @@ import (
 
 var _ port.AuthService = (*AuthService)(nil)
 
-// AuthService coordinates authentication workflows.
 type AuthService struct {
 	authRepo port.AuthRepository
 	userRepo port.UserRepository
 	jwtCfg   *config.JWT
 }
 
-// NewAuthService creates a new AuthService with the injected repositories and JWT config.
 func NewAuthService(authRepo port.AuthRepository, userRepo port.UserRepository, jwtCfg *config.JWT) *AuthService {
 	return &AuthService{
 		authRepo: authRepo,
@@ -32,7 +30,6 @@ func NewAuthService(authRepo port.AuthRepository, userRepo port.UserRepository, 
 	}
 }
 
-// Login validates user credentials, generates token pair, and persists the refresh token hash.
 func (s *AuthService) Login(ctx context.Context, req *domain.LoginRequest) (*domain.LoginResponse, error) {
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 
@@ -48,7 +45,6 @@ func (s *AuthService) Login(ctx context.Context, req *domain.LoginRequest) (*dom
 		return nil, domain.ErrInvalidCredentials
 	}
 
-	// Security: Do not allow unverified accounts to authenticate or issue tokens
 	if !user.IsEmailVerified {
 		return nil, domain.ErrEmailNotVerified
 	}
@@ -58,7 +54,6 @@ func (s *AuthService) Login(ctx context.Context, req *domain.LoginRequest) (*dom
 		return nil, fmt.Errorf("generating tokens: %w", err)
 	}
 
-	// Persist SHA-256 hash of raw refresh token
 	tokenHash := util.HashToken(tokens.RefreshToken)
 	expiresAt := pgtype.Timestamptz{
 		Time:  tokens.RefreshTokenExpiresAt,
@@ -75,20 +70,17 @@ func (s *AuthService) Login(ctx context.Context, req *domain.LoginRequest) (*dom
 	}, nil
 }
 
-// RefreshToken validates the refresh token, detects reuse, and issues a rotated token pair.
 func (s *AuthService) RefreshToken(ctx context.Context, rawRefreshToken string) (*domain.TokenPair, error) {
 	rawRefreshToken = strings.TrimSpace(rawRefreshToken)
 	if rawRefreshToken == "" {
 		return nil, domain.ErrInvalidToken
 	}
 
-	// 1. Validate JWT signature and structure
 	_, err := util.ParseToken(s.jwtCfg, util.TokenRefresh, rawRefreshToken)
 	if err != nil {
 		return nil, domain.ErrInvalidToken
 	}
 
-	// 2. Hash raw token and lookup record in DB
 	tokenHash := util.HashToken(rawRefreshToken)
 	tokenRecord, err := s.authRepo.GetRefreshToken(ctx, tokenHash)
 	if err != nil {
@@ -98,24 +90,20 @@ func (s *AuthService) RefreshToken(ctx context.Context, rawRefreshToken string) 
 		return nil, fmt.Errorf("locating refresh token: %w", err)
 	}
 
-	// 3. Security: Token Reuse Detection
-	// If a revoked token is replayed, revoke ALL sessions for this user (potential token theft!)
+	// token reuse detection: revoke all sessions if a revoked token is presented
 	if tokenRecord.IsRevoked {
 		_ = s.authRepo.RevokeAllUserRefreshTokens(ctx, tokenRecord.UserID)
 		return nil, domain.ErrTokenReuse
 	}
 
-	// 4. Check expiration
 	if tokenRecord.ExpiresAt.Valid && time.Now().After(tokenRecord.ExpiresAt.Time) {
 		return nil, domain.ErrTokenExpired
 	}
 
-	// 5. Revoke used token during normal rotation
 	if err := s.authRepo.RevokeRefreshToken(ctx, tokenRecord.ID); err != nil {
 		return nil, fmt.Errorf("revoking current token: %w", err)
 	}
 
-	// 6. Look up user to generate fresh pair
 	user, err := s.userRepo.GetUserByID(ctx, tokenRecord.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("looking up user: %w", err)
@@ -130,7 +118,6 @@ func (s *AuthService) RefreshToken(ctx context.Context, rawRefreshToken string) 
 		return nil, fmt.Errorf("generating new tokens: %w", err)
 	}
 
-	// 7. Persist new refresh token hash
 	newTokenHash := util.HashToken(newTokens.RefreshToken)
 	newExpiresAt := pgtype.Timestamptz{
 		Time:  newTokens.RefreshTokenExpiresAt,
@@ -144,7 +131,6 @@ func (s *AuthService) RefreshToken(ctx context.Context, rawRefreshToken string) 
 	return newTokens, nil
 }
 
-// Logout invalidates all user refresh tokens for the session.
 func (s *AuthService) Logout(ctx context.Context, rawRefreshToken string) error {
 	rawRefreshToken = strings.TrimSpace(rawRefreshToken)
 	if rawRefreshToken == "" {

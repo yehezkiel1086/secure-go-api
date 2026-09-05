@@ -23,7 +23,6 @@ type Client struct {
 	RoutingKey string
 }
 
-// NewClient establishes a connection to RabbitMQ, initializes exchange & queue topology, and returns a Client.
 func NewClient(cfg *config.Rabbitmq) (*Client, error) {
 	url := cfg.AMQPURL()
 	conn, err := amqp.Dial(url)
@@ -31,7 +30,6 @@ func NewClient(cfg *config.Rabbitmq) (*Client, error) {
 		return nil, fmt.Errorf("connecting to rabbitmq: %w", err)
 	}
 
-	// Use temporary channel to declare durable topology
 	ch, err := conn.Channel()
 	if err != nil {
 		_ = conn.Close()
@@ -39,36 +37,33 @@ func NewClient(cfg *config.Rabbitmq) (*Client, error) {
 	}
 	defer ch.Close()
 
-	// Declare direct durable exchange
 	err = ch.ExchangeDeclare(
 		EmailExchange,
 		EmailExchangeType,
-		true,  // durable
-		false, // auto-deleted
-		false, // internal
-		false, // no-wait
-		nil,   // arguments
+		true,
+		false,
+		false,
+		false,
+		nil,
 	)
 	if err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("declaring exchange %q: %w", EmailExchange, err)
 	}
 
-	// Declare durable queue
 	q, err := ch.QueueDeclare(
 		EmailVerifyQueue,
-		true,  // durable
-		false, // delete when unused
-		false, // exclusive
-		false, // no-wait
-		nil,   // arguments
+		true,
+		false,
+		false,
+		false,
+		nil,
 	)
 	if err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("declaring queue %q: %w", EmailVerifyQueue, err)
 	}
 
-	// Bind queue to exchange
 	err = ch.QueueBind(
 		q.Name,
 		EmailVerifyRoutingKey,

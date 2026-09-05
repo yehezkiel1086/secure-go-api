@@ -9,12 +9,11 @@ import (
 	"github.com/yehezkiel1086/secure-go-api/internal/core/util"
 )
 
-// AuthMiddleware extracts and validates the JWT access token from Authorization header or cookie.
 func AuthMiddleware(cfg *config.JWT) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var tokenStr string
 
-		// 1. Check Authorization header
+		// check authorization header
 		authHeader := c.GetHeader("Authorization")
 		if authHeader != "" {
 			parts := strings.SplitN(authHeader, " ", 2)
@@ -23,7 +22,7 @@ func AuthMiddleware(cfg *config.JWT) gin.HandlerFunc {
 			}
 		}
 
-		// 2. Fallback to HttpOnly access_token cookie
+		// fallback to httponly cookie
 		if tokenStr == "" {
 			if cookie, err := c.Cookie("access_token"); err == nil && cookie != "" {
 				tokenStr = cookie
@@ -41,7 +40,6 @@ func AuthMiddleware(cfg *config.JWT) gin.HandlerFunc {
 			return
 		}
 
-		// Set caller information in request context
 		c.Set("userID", claims.Subject)
 		c.Set("role", claims.Role)
 		c.Set("email", claims.Email)
@@ -51,7 +49,6 @@ func AuthMiddleware(cfg *config.JWT) gin.HandlerFunc {
 	}
 }
 
-// RoleMiddleware enforces Role-Based Access Control (RBAC) against the caller's verified role.
 func RoleMiddleware(allowedRoles ...int32) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		val, exists := c.Get("role")
